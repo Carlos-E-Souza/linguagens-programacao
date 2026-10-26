@@ -1,5 +1,10 @@
 # README
 
+> **Convenção de nomes:** o protocolo compartilhado com o servidor (envelope WebSocket, chaves JSON e variáveis de
+> ambiente) usa inglês, conforme `back-end/PLANO.md`. Este arquivo ainda descreve o template original do Wails e não
+> define identificadores próprios. Ao implementar a camada Go do cliente e a interface, siga a mesma convenção:
+> identificadores em inglês, prosa em português. O plano do cliente está em [`PLANO.md`](PLANO.md).
+
 ## Sobre
 
 Este é o template oficial Vanilla do Wails.
