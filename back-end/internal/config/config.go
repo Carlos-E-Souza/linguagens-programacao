@@ -26,10 +26,6 @@ type Config struct {
 // isDevMode reports whether DEV_MODE is enabled, marking a local run
 // without a .env file where an empty secret is tolerated. We decide it
 // via a dedicated variable instead of guessing from other signals.
-//
-// It is a function rather than a package-level variable on purpose: a
-// variable would be evaluated once at process start, so a test using
-// t.Setenv("DEV_MODE", ...) would keep reading the stale value.
 func isDevMode() bool {
 	return os.Getenv("DEV_MODE") == "true"
 }
