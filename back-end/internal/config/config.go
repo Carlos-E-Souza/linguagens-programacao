@@ -77,7 +77,7 @@ func Load() (Config, error) {
 // envOr returns the value of the named variable or a fallback when it
 // is unset (or empty). Empty is treated as unset because an empty
 // string is never a meaningful value for any setting here.
-func envOr(name, fallback string) string {
+func envOr(name string, fallback string) string {
 	if value := os.Getenv(name); value != "" {
 		return value
 	}
