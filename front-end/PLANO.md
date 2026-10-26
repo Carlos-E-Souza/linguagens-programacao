@@ -11,17 +11,23 @@ A interface **nunca** fala diretamente com o servidor: toda comunicação passa 
 
 O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/PLANO.md`.
 
+**Convenção de nomes:** o protocolo compartilhado — envelope, tipos de evento, chaves JSON, colunas do banco e
+variáveis de ambiente — usa inglês em ambos os lados, conforme a decisão registrada em `back-end/PLANO.md`. Os
+nomes internos do front-end (métodos expostos, eventos do Wails e módulos JavaScript) ainda aparecem neste documento
+em português, porque são a proposta original de interface e a padronização do front-end não faz parte deste escopo;
+ao implementá-los, devem seguir a mesma convenção de inglês.
+
 ---
 
 ## Decisões de projeto
 
 | Tema                    | Decisão                                                                                               |
 |-------------------------|-------------------------------------------------------------------------------------------------------|
-| Endereço do servidor    | Variável `URL_SERVIDOR` (padrão `http://localhost:8080`); o WS usa o mesmo host com `ws://`/`wss://` |
-| Cache local e fila      | SQLite (`modernc.org/sqlite`) em `os.UserConfigDir()/chat-client/<usuario>.db`                       |
+| Endereço do servidor    | Variável `SERVER_URL` (padrão `http://localhost:8080`); o WS usa o mesmo host com `ws://`/`wss://` |
+| Cache local e fila      | SQLite (`modernc.org/sqlite`) em `os.UserConfigDir()/chat-client/<username>.db`                       |
 | Token                   | Guardado no cache local para manter a sessão; apagado ao sair                                         |
-| IDs das mensagens       | `id_cliente` = UUID v4 gerado na camada Go no momento do envio                                        |
-| Status da mensagem      | `pendente` (na fila) → `enviada` (ACK) → `entregue` → `lida`; `falhou` para erro definitivo do servidor |
+| IDs das mensagens       | `client_id` = UUID v4 gerado na camada Go no momento do envio                                        |
+| Status da mensagem      | `pending` (na fila) → `sent` (ACK) → `delivered` → `read`; `failed` para erro definitivo do servidor  |
 | Reconexão               | Backoff exponencial com jitter: 1s, 2s, 4s… até 30s                                                   |
 | Estado da interface     | Um módulo `estado.js` com store simples (objeto + assinantes), sem bibliotecas                        |
 | Estrutura do JS         | Módulos ES (`import`/`export`) empacotados pelo Vite                                                  |
@@ -45,7 +51,7 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
 | `RemoverMembro(conversaID, usuarioID)`             | —                           | Remove membro ou sai do grupo                      |
 | `CarregarMensagens(conversaID, antesDaSequencia)`  | `[]Mensagem`                | Cache primeiro; busca no servidor o que faltar     |
 | `EnviarMensagem(conversaID, conteudo)`             | `Mensagem` (status pendente)| Coloca na fila e envia se conectado                |
-| `MarcarComoLida(conversaID, ateSequencia)`         | —                           | Envia `mensagem.lida`                              |
+| `MarcarComoLida(conversaID, ateSequencia)`         | —                           | Envia `message.read`                              |
 | `InformarDigitando(conversaID, ativo)`             | —                           | Envia `digitando`                                  |
 | `EstadoConexao()`                                  | `string`                    | `conectado`, `conectando`, `desconectado`          |
 
@@ -55,11 +61,11 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
 |------------------------|----------------------------------------------------------|
 | `conexao:estado`       | `conectado` / `conectando` / `desconectado`              |
 | `mensagem:nova`        | mensagem completa                                        |
-| `mensagem:atualizada`  | `id_cliente`, `id`, `sequencia`, `status`                |
-| `mensagem:status`      | `conversa_id`, `usuario_id`, `ate_sequencia`, `status`   |
+| `mensagem:atualizada`  | `client_id`, `id`, `sequence`, `status`                  |
+| `mensagem:status`      | `conversation_id`, `user_id`, `up_to_sequence`, `status` |
 | `conversa:atualizada`  | conversa com membros e contador de não lidas             |
-| `presenca`             | `usuario_id`, `online`                                   |
-| `digitando`            | `conversa_id`, `usuario_id`, `ativo`                     |
+| `presenca`             | `user_id`, `online`                                      |
+| `digitando`            | `conversation_id`, `user_id`, `active`                   |
 | `sessao:expirada`      | — (token inválido; a interface volta para o login)       |
 | `erro`                 | `mensagem`                                               |
 
@@ -93,7 +99,7 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
       login.css
       chat.css
   ```
-- [ ] Configuração na camada Go: `URL_SERVIDOR` lida em `NovaAplicacao`, com valor padrão.
+- [ ] Configuração na camada Go: `SERVER_URL` lida em `NovaAplicacao`, com valor padrão.
 - [ ] Ajustar `options.App` em `main.go`: título "Chat", tamanho mínimo da janela, `OnShutdown` para encerrar a conexão.
 - [ ] `internal/eventos`: constantes com os nomes dos eventos e structs dos payloads.
 - [ ] `modelos` do cliente (pode ficar em `internal/api`): `Usuario`, `Conversa`, `Membro`, `Mensagem`, com as mesmas
@@ -107,7 +113,7 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
 
 - [ ] `api.Cliente` com `http.Client` (timeout de 10s), URL base e token.
 - [ ] Método interno `requisitar(ctx, metodo, caminho, corpo, &resposta)`: serializa JSON, adiciona
-      `Authorization: Bearer`, converte respostas de erro em um tipo `ErroAPI{Status, Codigo, Mensagem}`.
+      `Authorization: Bearer`, converte respostas de erro em um tipo `APIError{Status, Code, Message}`.
 - [ ] Um método por endpoint: `Cadastrar`, `Entrar`, `BuscarUsuarios`, `ListarConversas`, `CriarConversa`,
       `AdicionarMembros`, `RemoverMembro`, `ListarMensagens`.
 - [ ] Resposta `401` dispara o evento `sessao:expirada`.
@@ -133,8 +139,8 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
 
 - [ ] Abrir um SQLite por usuário em `os.UserConfigDir()/chat-client/` ao entrar; fechar ao sair.
 - [ ] Tabelas: `sessao` (token, usuário), `conversas`, `membros`, `mensagens`
-      (com `id_cliente`, `sequencia`, `status`) e `fila_envio`.
-- [ ] Funções: `SalvarConversas`, `ListarConversas`, `SalvarMensagens` (upsert por `id_cliente`/`id`),
+      (com `client_id`, `sequencia`, `status`) e `fila_envio`.
+- [ ] Funções: `SalvarConversas`, `ListarConversas`, `SalvarMensagens` (upsert por `client_id`/`id`),
       `ListarMensagens(conversaID, antes, limite)`, `UltimaSequencia(conversaID)`, `AtualizarStatus`.
 - [ ] `Aplicacao.RestaurarSessao`: lê o token salvo e, se válido, entra direto na tela de chat.
 - [ ] Testes com banco em `t.TempDir()`.
@@ -181,16 +187,16 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
 
 ## Fase 6 — Envio de mensagens e fila de pendentes (`internal/fila`)
 
-- [ ] `Aplicacao.EnviarMensagem`: gera `id_cliente`, salva no cache com status `pendente`, coloca na fila
+- [ ] `Aplicacao.EnviarMensagem`: gera `client_id`, salva no cache com status `pending`, coloca na fila
       (`fila_envio` no SQLite, para sobreviver ao fechamento do app), envia se conectado e devolve a mensagem para a
       interface exibir na hora.
-- [ ] Ao receber `mensagem.ack`: remover da fila, gravar `id`, `sequencia` e `criada_em` no cache, status `enviada`,
+- [ ] Ao receber `message.ack`: remover da fila, gravar `id`, `sequencia` e `created_at` no cache, status `sent`,
       emitir `mensagem:atualizada`.
-- [ ] Ao receber `erro` com `id_cliente`: marcar como `falhou` (ex.: não é mais membro) e remover da fila.
+- [ ] Ao receber `erro` com `client_id`: marcar como `failed` (ex.: não é mais membro) e remover da fila.
 - [ ] Reenvio: mensagens sem ACK após um timeout (ex.: 10s) são reenviadas; após reconexão, toda a fila é reenviada
-      na ordem original. O servidor descarta duplicatas pelo `id_cliente`.
+      na ordem original. O servidor descarta duplicatas pelo `client_id`.
 - [ ] Interface: `componentes/campo-mensagem.js` com Enter para enviar e Shift+Enter para quebrar linha; mensagens
-      pendentes aparecem com ícone de relógio; opção de tentar novamente para `falhou`.
+      pendentes aparecem com ícone de relógio; opção de tentar novamente para `failed`.
 - [ ] Testes da fila: ordem de reenvio, remoção por ACK, persistência entre reinícios.
 
 **Pronto quando:** mensagens enviadas offline são entregues ao reconectar, sem duplicatas.
@@ -199,15 +205,15 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
 
 ## Fase 7 — Mensagens recebidas, status, presença e "digitando"
 
-- [ ] Ao receber `mensagem.nova`: salvar no cache, emitir `mensagem:nova`, atualizar a conversa (prévia, ordem,
-      não lidas) e enviar `mensagem.entregue` ao servidor.
+- [ ] Ao receber `message.new`: salvar no cache, emitir `mensagem:nova`, atualizar a conversa (prévia, ordem,
+      não lidas) e enviar `message.delivered` ao servidor.
 - [ ] Se a conversa estiver aberta e a janela em foco, chamar `MarcarComoLida` com a maior sequência visível;
       ao abrir uma conversa, marcar como lida até a última mensagem.
-- [ ] `mensagem.status`: atualizar o status das mensagens próprias até `ate_sequencia`
+- [ ] `message.status`: atualizar o status das mensagens próprias até `up_to_sequence`
       (em grupos, "entregue"/"lida" só quando todos os membros confirmarem); ícones ✓ enviada, ✓✓ entregue, ✓✓ azul lida.
 - [ ] `presenca`: atualizar o indicador online/offline na lista, no cabeçalho e na lista de membros.
-- [ ] `digitando`: no campo de mensagem, enviar `ativo: true` ao começar a digitar (no máximo a cada 2s) e
-      `ativo: false` após 3s sem digitar ou ao enviar; exibir "Fulano está digitando..." e esconder após 5s sem eventos.
+- [ ] `digitando`: no campo de mensagem, enviar `active: true` ao começar a digitar (no máximo a cada 2s) e
+      `active: false` após 3s sem digitar ou ao enviar; exibir "Fulano está digitando..." e esconder após 5s sem eventos.
 - [ ] Notificação visual (contador e destaque) para mensagens em conversas não abertas.
 
 **Pronto quando:** dois clientes conversam vendo status, presença e "digitando..." em tempo real.
@@ -216,9 +222,9 @@ O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/P
 
 ## Fase 8 — Sincronização após reconexão
 
-- [ ] Ao conectar, enviar `sincronizar` com `ultima_sequencia` de cada conversa do cache.
-- [ ] Processar as `mensagem.nova` recebidas como na Fase 7, ignorando as que já estão no cache.
-- [ ] Ao receber `sincronizacao.fim`: recarregar a lista de conversas via REST (para membros e grupos novos)
+- [ ] Ao conectar, enviar `sync` com `last_sequence` de cada conversa do cache.
+- [ ] Processar as `message.new` recebidas como na Fase 7, ignorando as que já estão no cache.
+- [ ] Ao receber `sync.end`: recarregar a lista de conversas via REST (para membros e grupos novos)
       e reenviar a fila de pendentes.
 - [ ] Detectar buracos na sequência de uma conversa e buscar o trecho faltante via REST.
 

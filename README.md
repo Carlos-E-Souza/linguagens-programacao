@@ -23,6 +23,7 @@ Responsável por autenticação, gerenciamento de usuários e conversas, roteame
 
 | Método | Endpoint                                   | Função                                                  |
 |--------|--------------------------------------------|---------------------------------------------------------|
+| GET    | `/api/health`                              | Verificação de disponibilidade do servidor              |
 | POST   | `/api/auth/register`                       | Cadastro de usuário                                     |
 | POST   | `/api/auth/login`                          | Login, retorna token JWT                                |
 | GET    | `/api/users`                               | Busca de usuários para iniciar conversas                |
@@ -36,6 +37,26 @@ Responsável por autenticação, gerenciamento de usuários e conversas, roteame
 ### Aplicação 2: Cliente Desktop (Wails + Vite + Vanilla JS)
 
 A camada Go do Wails mantém a conexão WebSocket com o servidor, cuida da reconexão automática, da fila de mensagens pendentes e do cache local, e repassa os eventos para a interface por meio do sistema de eventos do Wails (`runtime.EventsEmit`). A interface, em HTML, CSS e JavaScript puros, exibe a lista de conversas, a janela de chat, a criação de grupos, os indicadores de presença (online/offline), “digitando...” e o status de cada mensagem (enviada, entregue, lida).
+
+## Convenção de nomes
+
+O projeto adota **um único idioma para identificadores: o inglês**. Vale para nomes de pacotes, arquivos, funções,
+variáveis, variáveis de ambiente, tabelas e colunas do banco, endpoints, tipos do envelope WebSocket e chaves JSON.
+Assim um mesmo dado mantém o mesmo nome desde a coluna do SQL até o objeto JavaScript, sem traduções pelo caminho.
+A **prosa da documentação permanece em português** — os planos, este README e os comentários explicativos são
+escritos em português, citando os identificadores em inglês.
+
+| Camada                  | Exemplo                                                                        |
+|-------------------------|--------------------------------------------------------------------------------|
+| Pacotes e arquivos      | `cmd/server`, `internal/db`, `internal/httputil`, `migrations/`                |
+| Funções e tipos         | `config.Load`, `auth.GenerateToken`, `hub.Hub`, `store.Pool`                   |
+| Banco de dados          | `users`, `conversations`, `conversation_members`, `messages`, `last_read`       |
+| Envelope WebSocket      | `{"type": "message.send", "data": {...}}`                                      |
+| Tipos de evento WS      | `message.ack`, `message.new`, `message.status`, `presence`, `typing`, `sync`   |
+| Variáveis de ambiente   | `SERVER_ADDRESS`, `DATABASE_PATH`, `JWT_SECRET`, `PERSISTENCE_WORKERS`         |
+
+A tabela completa de renomeações (nome antigo em português → nome novo em inglês) está em
+[`back-end/PLANO.md`](back-end/PLANO.md).
 
 ## Recursos do Go Explorados
 
