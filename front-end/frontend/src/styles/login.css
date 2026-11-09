@@ -1,0 +1,83 @@
+/* Tela de login e cadastro (bloco .login). */
+.login {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.login__card {
+  width: min(400px, 100%);
+  padding: var(--space-8);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  font-weight: var(--weight-bold);
+  color: var(--color-accent);
+}
+
+.login__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: 18px;
+}
+
+.login__title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.login__subtitle {
+  margin-top: var(--space-1);
+  color: var(--color-ink-muted);
+  font-size: var(--text-sm);
+}
+
+.login__form {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.login__form .button--primary {
+  margin-top: var(--space-2);
+}
+
+.login__alert,
+.login__notice {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.login__alert {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.login__notice {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-ink);
+}
+
+.login__switch {
+  margin-top: var(--space-6);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-ink-muted);
+}
