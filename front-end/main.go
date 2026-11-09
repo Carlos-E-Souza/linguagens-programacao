@@ -9,24 +9,26 @@ import (
 )
 
 //go:embed all:frontend/dist
-var arquivos embed.FS
+var assets embed.FS
 
 func main() {
-	// Cria uma instância da estrutura da aplicação
-	aplicacao := NovaAplicacao()
+	app := NewApp()
 
-	// Cria a aplicação com as opções
 	err := wails.Run(&options.App{
-		Title:  "chat-client",
-		Width:  1024,
-		Height: 768,
+		Title:     "Chat",
+		Width:     1100,
+		Height:    720,
+		MinWidth:  760,
+		MinHeight: 520,
 		AssetServer: &assetserver.Options{
-			Assets: arquivos,
+			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        aplicacao.iniciar,
+		// Mesma cor do fundo da interface (--color-canvas no tema claro), para não piscar ao abrir.
+		BackgroundColour: &options.RGBA{R: 244, G: 246, B: 248, A: 1},
+		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		Bind: []interface{}{
-			aplicacao,
+			app,
 		},
 	})
 
