@@ -1,43 +1,33 @@
-import './style.css';
-import './app.css';
+// Ponto de entrada: carrega os estilos, inicia a aplicação e troca de tela conforme store.screen.
 
-import logo from './assets/images/logo-universal.png';
-import {Saudar} from '../wailsjs/go/main/Aplicacao';
+import './styles/tokens.css';
+import './styles/base.css';
+import './styles/login.css';
+import './styles/chat.css';
 
-document.querySelector('#app').innerHTML = `
-    <img id="logo" class="logo">
-      <div class="result" id="resultado">Digite seu nome abaixo 👇</div>
-      <div class="input-box" id="entrada">
-        <input class="input" id="nome" type="text" autocomplete="off" />
-        <button class="btn" onclick="saudar()">Saudar</button>
-      </div>
-    </div>
-`;
-document.getElementById('logo').src = logo;
+import { boot } from './actions.js';
+import { store } from './state.js';
+import { createChatScreen } from './screens/chat.js';
+import { createLoginScreen } from './screens/login.js';
+import { h } from './utils/dom.js';
 
-let elementoNome = document.getElementById("nome");
-elementoNome.focus();
-let elementoResultado = document.getElementById("resultado");
+const root = document.querySelector('#app');
+let screen = null;
+let screenName = null;
 
-// Configura a função saudar
-window.saudar = function () {
-    // Obtém o nome
-    let nome = elementoNome.value;
+function mount(name, state) {
+  screen?.destroy();
+  screenName = name;
+  if (name === 'login') screen = createLoginScreen({ notice: state.notice });
+  else if (name === 'chat') screen = createChatScreen();
+  else screen = { el: h('div', { class: 'splash', role: 'status' }, h('span', { class: 'spinner' }), h('span', { class: 'visually-hidden' }, 'Carregando')), update() {}, destroy() {} };
+  root.replaceChildren(screen.el);
+}
 
-    // Verifica se a entrada está vazia
-    if (nome === "") return;
+store.subscribe((state) => {
+  if (state.screen !== screenName) mount(state.screen, state);
+  else if (state.screen === 'login') screen.update({ notice: state.notice });
+});
 
-    // Chama Aplicacao.Saudar(nome)
-    try {
-        Saudar(nome)
-            .then((resultado) => {
-                // Atualiza o resultado com o retorno de Aplicacao.Saudar()
-                elementoResultado.innerText = resultado;
-            })
-            .catch((erro) => {
-                console.error(erro);
-            });
-    } catch (erro) {
-        console.error(erro);
-    }
-};
+mount(store.get().screen, store.get());
+boot();
