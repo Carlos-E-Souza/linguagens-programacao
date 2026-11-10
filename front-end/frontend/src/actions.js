@@ -23,6 +23,7 @@ function listenToBackend() {
   bridge.on(EVENTS.connectionState, (connection) => store.set({ connection }));
   bridge.on(EVENTS.conversationUpdated, upsertConversation);
   bridge.on(EVENTS.messageUpdated, applyMessageUpdate);
+  bridge.on(EVENTS.messagesSynced, applySyncedMessages);
   bridge.on(EVENTS.conversationRemoved, ({ conversation_id: id }) => removeConversation(id));
   bridge.on(EVENTS.sessionExpired, () => resetToLogin('Sua sessão expirou. Entre novamente para continuar.'));
   bridge.on(EVENTS.error, ({ message }) => console.warn('Erro da camada Go:', message));
@@ -125,6 +126,16 @@ async function loadPage(id, before) {
 
 function updateMessages(state, id, fn) {
   return { ...state.messages, [id]: fn(messagesOf(state, id)) };
+}
+
+/** Junta de uma vez as mensagens recuperadas após voltar a conexão. */
+function applySyncedMessages({ conversation_id: id, messages }) {
+  store.set((state) => ({
+    messages: updateMessages(state, id, (page) => ({
+      ...page,
+      items: page.loaded ? mergeMessages(page.items, messages) : page.items,
+    })),
+  }));
 }
 
 // ACKs que chegam antes de a chamada SendMessage terminar (a fila envia na hora). Aplicados quando a mensagem

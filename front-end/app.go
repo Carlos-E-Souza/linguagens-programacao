@@ -56,6 +56,13 @@ type session struct {
 	cancel context.CancelFunc
 	wsDone chan struct{}
 	ended  bool
+
+	// A conexão WebSocket e consume usam estes campos ao sincronizar após reconectar.
+	syncMu         sync.Mutex
+	syncGeneration uint64
+	syncActive     bool
+	syncFrom       map[int64]int64
+	syncMessages   []api.Message
 }
 
 // NewApp cria a aplicação lendo SERVER_URL do ambiente.
@@ -330,8 +337,8 @@ func (a *App) startSession(token string, user api.User, fresh bool) error {
 		}
 	}
 	s.queue = queue.New(c, func(msg api.Message) error { return sendMessage(s.ws, msg) }, queue.Options{})
-	// A cada (re)conexão a fila inteira é reenviada; em goroutine para não atrasar o início da leitura.
-	s.ws.OnConnected = func() { go s.queue.ResendAll(ctx) }
+	// Primeiro pede o histórico perdido; a fila pendente é reenviada após sync.end.
+	s.ws.OnConnected = func() { a.startSync(s) }
 
 	a.mu.Lock()
 	old := a.session
@@ -428,6 +435,10 @@ func (a *App) consume(s *session) {
 			switch env.Type {
 			case "message.ack":
 				a.handleAck(s, env.Data)
+			case "message.new":
+				a.collectSyncMessage(s, env.Data)
+			case "sync.end":
+				a.finishSync(s)
 			case "error":
 				a.handleServerError(s, env.Data)
 			}
