@@ -230,23 +230,25 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
 
 ## Fase 0 — Fundamentos
 
-- [ ] `config`: struct `Config` e função `Load()` que lê `SERVER_ADDRESS`, `DATABASE_PATH`,
+- [x] `config`: struct `Config` e função `Load()` que lê `SERVER_ADDRESS`, `DATABASE_PATH`,
       `JWT_SECRET`, `PERSISTENCE_WORKERS` com valores padrão; falhar se `JWT_SECRET` estiver vazio fora do
       modo dev (`DEV_MODE=true`).
-- [ ] Adicionar variáveis para os parâmetros de tempo: `PING_INTERVAL` (padrão 30s), `PONG_TIMEOUT` (60s),
+- [x] Adicionar variáveis para os parâmetros de tempo: `PING_INTERVAL` (padrão 30s), `PONG_TIMEOUT` (60s),
       `TOKEN_EXPIRY` (24h), `CLIENT_QUEUE_SIZE` (256), `PERSISTENCE_QUEUE_SIZE` (4096), `MESSAGE_LIMIT_CHARS`
       (4000), `TYPING_COOLDOWN` (2s).
-
-      > **Estado atual:** `internal/config` já implementa `SERVER_ADDRESS`, `DATABASE_PATH`, `JWT_SECRET`,
-      > `DEV_MODE`, `PERSISTENCE_WORKERS`, `PING_INTERVAL`, `PONG_TIMEOUT`, `TOKEN_EXPIRY`, `CLIENT_QUEUE_SIZE` e
-      > `PERSISTENCE_QUEUE_SIZE`, e o `.env.example` lista todas as dez. `MESSAGE_LIMIT_CHARS` e `TYPING_COOLDOWN`
-      > ainda **não** existem no código: entram junto das Fases 5 e 7, que são as que de fato os usam.
-- [ ] `cmd/server/main.go`: carregar configuração, configurar `slog`, criar `http.Server` com `ReadHeaderTimeout`,
+- [x] `cmd/server/main.go`: carregar configuração, configurar `slog`, criar `http.Server` com `ReadHeaderTimeout`,
       e esqueleto do graceful shutdown com `signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)`.
-- [ ] Endpoint `GET /api/health` retornando `200` (útil para testes e para o cliente verificar o servidor).
-- [ ] `middleware`: logging de requisições (método, caminho, status, duração) e recuperação de `panic`.
-- [ ] Utilitários em `httputil`: `WriteJSON(w, status, v)`, `WriteError(w, status, code, message)`,
-      `ReadJSON(r, &v)` com `http.MaxBytesReader` e `DisallowUnknownFields`.
+- [x] Endpoint `GET /api/health` retornando `200` (útil para testes e para o cliente verificar o servidor).
+- [x] `middleware`: logging de requisições (método, caminho, status, duração) e recuperação de `panic`.
+- [x] Utilitários em `httputil`: `WriteJSON(w, status, v)`, `WriteError(w, status, code, message)`,
+      `ReadJSON(w, r, &v)` com `http.MaxBytesReader` e `DisallowUnknownFields`.
+
+      > **Desvio do plano:** `ReadJSON` recebe também o `http.ResponseWriter`, porque `http.MaxBytesReader`
+      > precisa dele para encerrar a conexão quando o limite é atingido.
+      >
+      > **Modo dev:** com `DEV_MODE=true` e sem `JWT_SECRET`, `Load()` preenche um segredo de
+      > desenvolvimento em vez de deixar o campo vazio. Sem isso o servidor subia e só falhava depois, em
+      > `auth.NewTokenIssuer`, que recusa assinar com segredo vazio.
 
 **Pronto quando:** `go run ./cmd/server` sobe, responde em `/api/health` e encerra limpo com Ctrl+C.
 
