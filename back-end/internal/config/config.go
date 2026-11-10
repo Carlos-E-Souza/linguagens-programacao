@@ -4,10 +4,16 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"time"
 )
+
+// devJWTSecret is the placeholder key used when DEV_MODE is on and no
+// JWT_SECRET was provided. It is intentionally obvious so it can never be
+// mistaken for a real secret.
+const devJWTSecret = "insecure-dev-secret-do-not-use-in-production"
 
 // Config groups everything the server needs to start.
 // Fields are exported (capitalized) so package main can read them.
@@ -21,6 +27,8 @@ type Config struct {
 	TokenExpiry          time.Duration // JWT validity window
 	ClientQueueSize      int           // per-connection outgoing channel buffer
 	PersistenceQueueSize int           // persistence queue buffer
+	MessageLimitChars    int           // maximum length of a message body
+	TypingCooldown       time.Duration // minimum gap between typing events per user
 }
 
 // isDevMode reports whether DEV_MODE is enabled, marking a local run
@@ -41,6 +49,7 @@ func Load() (Config, error) {
 		PersistenceWorkers:   envIntOr("PERSISTENCE_WORKERS", 4),
 		ClientQueueSize:      envIntOr("CLIENT_QUEUE_SIZE", 256),
 		PersistenceQueueSize: envIntOr("PERSISTENCE_QUEUE_SIZE", 4096),
+		MessageLimitChars:    envIntOr("MESSAGE_LIMIT_CHARS", 4000),
 	}
 
 	// Durations are parsed strictly: a typo such as PING_INTERVAL=30
@@ -56,15 +65,31 @@ func Load() (Config, error) {
 	if cfg.TokenExpiry, err = envDurationOr("TOKEN_EXPIRY", 24*time.Hour); err != nil {
 		return cfg, err
 	}
+	if cfg.TypingCooldown, err = envDurationOr("TYPING_COOLDOWN", 2*time.Second); err != nil {
+		return cfg, err
+	}
 
-	if cfg.JWTSecret == "" && !isDevMode() {
-		return cfg, fmt.Errorf("JWT_SECRET is required (or set DEV_MODE=true for development)")
+	if cfg.JWTSecret == "" {
+		if !isDevMode() {
+			return cfg, fmt.Errorf("JWT_SECRET is required (or set DEV_MODE=true for development)")
+		}
+		// Dev mode still needs a non-empty key, because the token issuer
+		// refuses to sign with an empty secret. A fixed placeholder keeps
+		// local runs working without pretending to be secure.
+		cfg.JWTSecret = devJWTSecret
+		slog.Warn("DEV_MODE is enabled: using an insecure development JWT secret; tokens are not verifiable across restarts")
 	}
 	if cfg.PersistenceWorkers < 1 {
 		return cfg, fmt.Errorf("PERSISTENCE_WORKERS must be at least 1")
 	}
 	if cfg.PingInterval <= 0 || cfg.PongTimeout < cfg.PingInterval {
 		return cfg, fmt.Errorf("invalid ping/pong intervals")
+	}
+	if cfg.MessageLimitChars < 1 {
+		return cfg, fmt.Errorf("MESSAGE_LIMIT_CHARS must be at least 1")
+	}
+	if cfg.TypingCooldown < 0 {
+		return cfg, fmt.Errorf("TYPING_COOLDOWN must not be negative")
 	}
 
 	return cfg, nil
