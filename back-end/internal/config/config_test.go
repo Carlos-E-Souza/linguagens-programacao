@@ -68,6 +68,53 @@ func TestLoadDevModeSuppliesSecret(t *testing.T) {
 	}
 }
 
+// TestPprofRequiresDevMode guards the profiler endpoints: they expose
+// internals and carry no authentication, so enabling them in a
+// production configuration must be refused rather than silently obeyed.
+func TestPprofRequiresDevMode(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("DEV_MODE", "false")
+	t.Setenv("PPROF_ADDRESS", ":6060")
+
+	if _, err := Load(); err == nil {
+		t.Error("expected an error when PPROF_ADDRESS is set outside dev mode")
+	}
+}
+
+// TestPprofAllowedInDevMode covers the development path.
+func TestPprofAllowedInDevMode(t *testing.T) {
+	t.Setenv("JWT_SECRET", "")
+	t.Setenv("DEV_MODE", "true")
+	t.Setenv("PPROF_ADDRESS", "127.0.0.1:6060")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	if got, want := cfg.PprofAddress, "127.0.0.1:6060"; got != want {
+		t.Errorf("PprofAddress: got %q, want %q", got, want)
+	}
+	if !cfg.DevMode {
+		t.Error("DevMode should be reported as true")
+	}
+}
+
+// TestPprofDisabledByDefault documents that an unset address means no
+// debug server is started.
+func TestPprofDisabledByDefault(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("DEV_MODE", "false")
+	t.Setenv("PPROF_ADDRESS", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	if cfg.PprofAddress != "" {
+		t.Errorf("PprofAddress should be empty by default, got %q", cfg.PprofAddress)
+	}
+}
+
 // TestLoadRejectsEmptySecretOutsideDevMode guards the fail-fast rule:
 // without DEV_MODE, an empty JWT_SECRET must stop the server from
 // starting with an unusable configuration.

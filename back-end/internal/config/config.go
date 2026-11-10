@@ -29,6 +29,8 @@ type Config struct {
 	PersistenceQueueSize int           // persistence queue buffer
 	MessageLimitChars    int           // maximum length of a message body
 	TypingCooldown       time.Duration // minimum gap between typing events per user
+	PprofAddress         string        // separate debug listen address; empty disables it
+	DevMode              bool          // whether DEV_MODE is on
 }
 
 // isDevMode reports whether DEV_MODE is enabled, marking a local run
@@ -50,6 +52,8 @@ func Load() (Config, error) {
 		ClientQueueSize:      envIntOr("CLIENT_QUEUE_SIZE", 256),
 		PersistenceQueueSize: envIntOr("PERSISTENCE_QUEUE_SIZE", 4096),
 		MessageLimitChars:    envIntOr("MESSAGE_LIMIT_CHARS", 4000),
+		PprofAddress:         envOr("PPROF_ADDRESS", ""),
+		DevMode:              isDevMode(),
 	}
 
 	// Durations are parsed strictly: a typo such as PING_INTERVAL=30
@@ -90,6 +94,11 @@ func Load() (Config, error) {
 	}
 	if cfg.TypingCooldown < 0 {
 		return cfg, fmt.Errorf("TYPING_COOLDOWN must not be negative")
+	}
+	// The profiler endpoints expose internals and have no authentication,
+	// so they are refused outside dev mode rather than silently enabled.
+	if cfg.PprofAddress != "" && !cfg.DevMode {
+		return cfg, fmt.Errorf("PPROF_ADDRESS requires DEV_MODE=true")
 	}
 
 	return cfg, nil

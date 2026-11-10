@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"sync"
@@ -88,6 +89,14 @@ func run() error {
 	// raised inside Logging itself.
 	handler := middleware.Recover(middleware.Logging(api.Routes()))
 
+	// The profiler runs on its own address so the public port never
+	// exposes it. config.Load already refuses a PPROF_ADDRESS outside dev
+	// mode, which is why no extra guard is needed here.
+	debugServer, err := startDebugServer(cfg)
+	if err != nil {
+		return err
+	}
+
 	server := &http.Server{
 		Addr:              cfg.ServerAddress,
 		Handler:           handler,
@@ -123,6 +132,12 @@ func run() error {
 		return err
 	}
 
+	if debugServer != nil {
+		if err := debugServer.Shutdown(shutdownCtx); err != nil {
+			slog.Warn("debug server did not stop cleanly", "error", err)
+		}
+	}
+
 	// Order matters. The hub stops first so no new message is accepted,
 	// then the pool drains everything already accepted, and only then is
 	// the database closed underneath it.
@@ -135,4 +150,39 @@ func run() error {
 
 	slog.Info("server stopped cleanly")
 	return nil
+}
+
+// startDebugServer serves net/http/pprof on its own address when
+// PPROF_ADDRESS is set, and returns nil when it is not.
+//
+// The endpoints are registered on a dedicated mux rather than on the main
+// one so that a public deployment cannot reach them even by guessing the
+// path, and so the profiler can be reached without authentication while
+// the API stays protected.
+func startDebugServer(cfg config.Config) (*http.Server, error) {
+	if cfg.PprofAddress == "" {
+		return nil, nil
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	debugServer := &http.Server{
+		Addr:              cfg.PprofAddress,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	go func() {
+		slog.Warn("pprof debug server listening (development only)", "address", cfg.PprofAddress)
+		if err := debugServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("pprof server stopped", "error", err)
+		}
+	}()
+
+	return debugServer, nil
 }

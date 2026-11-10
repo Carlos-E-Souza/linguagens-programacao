@@ -256,14 +256,14 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
 
 ## Fase 1 — Banco de dados
 
-- [ ] Escrever `migrations/0001_initial.sql` com o modelo de dados acima e os índices
+- [x] Escrever `migrations/0001_initial.sql` com o modelo de dados acima e os índices
       (`messages(conversation_id, sequence)`, `conversation_members(user_id)`).
-- [ ] `db.Open(ctx, path)`: abrir SQLite com `PRAGMA journal_mode=WAL`, `foreign_keys=ON`,
+- [x] `db.Open(ctx, path)`: abrir SQLite com `PRAGMA journal_mode=WAL`, `foreign_keys=ON`,
       `busy_timeout=5000`; configurar `SetMaxOpenConns` adequado ao SQLite.
-- [ ] `db.Migrate(ctx, db)`: embutir `migrations/*.sql` com `embed`, tabela `schema_version`, aplicar em transação
+- [x] `db.Migrate(ctx, db)`: embutir `migrations/*.sql` com `embed`, tabela `schema_version`, aplicar em transação
       apenas as migrations pendentes.
-- [ ] `models`: structs `User`, `Conversation`, `Member`, `Message` com tags JSON em inglês.
-- [ ] Repositórios em `db` (todos recebendo `context.Context`):
+- [x] `models`: structs `User`, `Conversation`, `Member`, `Message` com tags JSON em inglês.
+- [x] Repositórios em `db` (todos recebendo `context.Context`):
   - [ ] Usuários: `CreateUser`, `GetUserByUsername`, `GetUserByID`, `SearchUsers(term, limit)`.
   - [ ] Conversas: `CreateConversation` (em transação, com membros), `GetDirectConversation(a, b)`,
         `ListUserConversations` (com contador de não lidas e última mensagem), `GetConversation`.
@@ -272,7 +272,7 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
         `ListMessages(conversationID, beforeSequence, limit)`, `ListMessagesAfter(conversationID, sequence)`,
         `LastSequence(conversationID)`.
   - [ ] Status: `MarkDelivered` e `MarkRead` (só avançam: `MAX(atual, nova)`).
-- [ ] Testes dos repositórios com banco em memória (`file::memory:?cache=shared`) ou arquivo temporário (`t.TempDir()`).
+- [x] Testes dos repositórios com banco em memória (`file::memory:?cache=shared`) ou arquivo temporário (`t.TempDir()`).
 
 **Pronto quando:** o servidor cria o banco na primeira execução e os testes dos repositórios passam.
 
@@ -280,15 +280,15 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
 
 ## Fase 2 — Autenticação
 
-- [ ] `auth.HashPassword(password)` e `auth.CheckPassword(hash, password)` com bcrypt.
-- [ ] `auth.GenerateToken(userID)` e `auth.ValidateToken(token)` com `jwt/v5`, HS256, claims `sub` e `exp`;
+- [x] `auth.HashPassword(password)` e `auth.CheckPassword(hash, password)` com bcrypt.
+- [x] `auth.GenerateToken(userID)` e `auth.ValidateToken(token)` com `jwt/v5`, HS256, claims `sub` e `exp`;
       rejeitar algoritmos diferentes de HS256.
-- [ ] `POST /api/auth/register`: validar `username` (3–32 caracteres, `[a-z0-9_]`), `display_name` e `password`
+- [x] `POST /api/auth/register`: validar `username` (3–32 caracteres, `[a-z0-9_]`), `display_name` e `password`
       (mínimo 8); responder `201` com o usuário; `409` se o nome já existir.
-- [ ] `POST /api/auth/login`: responder `200` com `{ token, user }`; `401` com mensagem genérica se falhar.
-- [ ] `middleware.Authenticate`: extrair o Bearer token, validar e colocar o `userID` no `context.Context`
+- [x] `POST /api/auth/login`: responder `200` com `{ token, user }`; `401` com mensagem genérica se falhar.
+- [x] `middleware.Authenticate`: extrair o Bearer token, validar e colocar o `userID` no `context.Context`
       (chave de tipo não exportado); função `UserFromContext(ctx)`.
-- [ ] Testes: hash/conferência, token expirado, token com assinatura errada, handlers com `httptest`.
+- [x] Testes: hash/conferência, token expirado, token com assinatura errada, handlers com `httptest`.
 
 **Pronto quando:** é possível cadastrar, logar e acessar uma rota protegida com o token.
 
@@ -298,19 +298,19 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
 
 Todas as rotas abaixo usam `middleware.Authenticate`.
 
-- [ ] `GET /api/users?search=<termo>`: busca por `username`/`display_name`, limite de 20, excluindo o próprio usuário;
+- [x] `GET /api/users?search=<termo>`: busca por `username`/`display_name`, limite de 20, excluindo o próprio usuário;
       incluir `online` consultando o Hub.
-- [ ] `GET /api/conversations`: conversas do usuário com membros, última mensagem e `unread_count`, ordenadas pela última atividade.
-- [ ] `POST /api/conversations`:
+- [x] `GET /api/conversations`: conversas do usuário com membros, última mensagem e `unread_count`, ordenadas pela última atividade.
+- [x] `POST /api/conversations`:
   - [ ] `{ "type": "direct", "members": [id] }` → devolve a conversa existente (`200`) ou cria (`201`).
   - [ ] `{ "type": "group", "name": "...", "members": [ids] }` → cria com o criador como `admin`.
   - [ ] Validar que os usuários existem; notificar os membros online com `conversation.updated`.
-- [ ] `POST /api/conversations/{id}/members`: só grupos, só membros podem adicionar; notificar via Hub.
-- [ ] `DELETE /api/conversations/{id}/members/{userId}`: o próprio usuário pode sair; um `admin` pode remover outros;
+- [x] `POST /api/conversations/{id}/members`: só grupos, só membros podem adicionar; notificar via Hub.
+- [x] `DELETE /api/conversations/{id}/members/{userId}`: o próprio usuário pode sair; um `admin` pode remover outros;
       notificar via Hub e atualizar o cache de membros do Hub.
-- [ ] `GET /api/conversations/{id}/messages?before=<sequence>&limit=<n>`: paginação por sequência
+- [x] `GET /api/conversations/{id}/messages?before=<sequence>&limit=<n>`: paginação por sequência
       (padrão 50, máximo 100), só para membros (`403` caso contrário), resposta em ordem crescente de sequência.
-- [ ] Testes de cada handler com `httptest` cobrindo sucesso, `400`, `401`, `403` e `404`.
+- [x] Testes de cada handler com `httptest` cobrindo sucesso, `400`, `401`, `403` e `404`.
 
 **Pronto quando:** todas as rotas da tabela do README funcionam via `curl`.
 
@@ -318,24 +318,24 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 
 ## Fase 4 — Hub e conexões WebSocket
 
-- [ ] `hub.Client`: `userID`, conexão, canal `send chan []byte` com buffer (`CLIENT_QUEUE_SIZE`),
+- [x] `hub.Client`: `userID`, conexão, canal `send chan []byte` com buffer (`CLIENT_QUEUE_SIZE`),
       `context.CancelFunc` próprio.
-- [ ] `hub.Hub` com:
+- [x] `hub.Hub` com:
   - [ ] Canais `register`, `unregister`, `incoming` (mensagens vindas dos clientes) e `notify`
         (eventos vindos da API REST, ex.: membros alterados).
   - [ ] `map[int64]map[*Client]struct{}` de usuários conectados (um usuário pode ter mais de uma conexão).
   - [ ] Cache `map[int64]map[int64]struct{}` de membros por conversa, carregado do banco sob demanda.
   - [ ] `sync.RWMutex` protegendo as estruturas lidas por outras goroutines (ex.: `IsOnline(userID)` usado pela API).
   - [ ] `Run(ctx)`: laço com `select` sobre `register`, `unregister`, `incoming`, `notify` e `ctx.Done()`.
-- [ ] Handler `GET /ws`: autenticar pelo header `Authorization`, `websocket.Accept`, limitar tamanho da mensagem
+- [x] Handler `GET /ws`: autenticar pelo header `Authorization`, `websocket.Accept`, limitar tamanho da mensagem
       (`SetReadLimit`), criar o `Client`, registrar no Hub e iniciar as goroutines:
   - [ ] `readMessages`: lê frames, decodifica o envelope, valida e envia para `hub.incoming`; ao sair, desregistra.
   - [ ] `writeMessages`: consome `client.send` e escreve com timeout por escrita (`context.WithTimeout`).
-- [ ] Cliente lento: se `client.send` estiver cheio, o Hub não bloqueia — fecha a conexão com
+- [x] Cliente lento: se `client.send` estiver cheio, o Hub não bloqueia — fecha a conexão com
       `websocket.StatusPolicyViolation` e desregistra.
-- [ ] Ao registrar a primeira conexão de um usuário: enviar `presence {online: true}` aos contatos online.
-- [ ] Ao desregistrar a última conexão: enviar `presence {online: false}`.
-- [ ] Testes do Hub com clientes falsos (sem rede) e um teste de integração com `httptest.NewServer` e dois clientes WS.
+- [x] Ao registrar a primeira conexão de um usuário: enviar `presence {online: true}` aos contatos online.
+- [x] Ao desregistrar a última conexão: enviar `presence {online: false}`.
+- [x] Testes do Hub com clientes falsos (sem rede) e um teste de integração com `httptest.NewServer` e dois clientes WS.
 
 **Pronto quando:** dois clientes conectam, cada um recebe a presença do outro e a desconexão é detectada.
 
@@ -343,7 +343,7 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 
 ## Fase 5 — Envio de mensagens
 
-- [ ] Tratar `message.send` no Hub:
+- [x] Tratar `message.send` no Hub:
   - [ ] Verificar se o remetente é membro da conversa (senão, `error` com o `client_id`).
   - [ ] Validar o conteúdo (não vazio, tamanho máximo, ex.: 4000 caracteres).
   - [ ] Deduplicação: manter um cache recente `(sender_id, client_id) → ack`; se já existir, reenviar o mesmo ACK
@@ -353,8 +353,8 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
   - [ ] Responder ao remetente com `message.ack`.
   - [ ] Colocar a mensagem na fila de persistência (Fase 6).
   - [ ] Entregar `message.new` a todas as conexões dos membros online, inclusive outras conexões do remetente.
-- [ ] Atualizar `conversations.last_sequence` junto com a gravação das mensagens.
-- [ ] Testes: ordem das sequências com envios concorrentes, reenvio do mesmo `client_id`, envio para conversa alheia.
+- [x] Atualizar `conversations.last_sequence` junto com a gravação das mensagens.
+- [x] Testes: ordem das sequências com envios concorrentes, reenvio do mesmo `client_id`, envio para conversa alheia.
 
 **Pronto quando:** mensagens chegam em tempo real aos membros conectados, na ordem, sem duplicatas.
 
@@ -362,16 +362,16 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 
 ## Fase 6 — Persistência com worker pool
 
-- [ ] `store.Pool`: canal `queue chan models.Message` com buffer (`PERSISTENCE_QUEUE_SIZE`)
+- [x] `store.Pool`: canal `queue chan models.Message` com buffer (`PERSISTENCE_QUEUE_SIZE`)
       e `PERSISTENCE_WORKERS` goroutines.
-- [ ] Cada worker acumula mensagens em lote (até N mensagens ou T milissegundos, com `time.Ticker`)
+- [x] Cada worker acumula mensagens em lote (até N mensagens ou T milissegundos, com `time.Ticker`)
       e grava com `InsertMessages` em uma transação.
-- [ ] Tratar falhas de gravação: tentar novamente com backoff limitado e registrar em log o que não puder ser gravado.
-- [ ] `Enqueue(msg)`: se a fila estiver cheia, aplicar backpressure (bloquear com timeout) em vez de descartar.
-- [ ] `Shutdown(ctx)`: fechar a fila, esperar os workers esvaziarem tudo com `sync.WaitGroup`, respeitando o prazo do `ctx`.
-- [ ] Atenção à ordem: como vários workers gravam em paralelo, a ordem na tabela não importa —
+- [x] Tratar falhas de gravação: tentar novamente com backoff limitado e registrar em log o que não puder ser gravado.
+- [x] `Enqueue(msg)`: se a fila estiver cheia, aplicar backpressure (bloquear com timeout) em vez de descartar.
+- [x] `Shutdown(ctx)`: fechar a fila, esperar os workers esvaziarem tudo com `sync.WaitGroup`, respeitando o prazo do `ctx`.
+- [x] Atenção à ordem: como vários workers gravam em paralelo, a ordem na tabela não importa —
       a ordem é dada pela coluna `sequence`.
-- [ ] Testes: todas as mensagens enfileiradas são gravadas após `Shutdown`; comportamento com fila cheia.
+- [x] Testes: todas as mensagens enfileiradas são gravadas após `Shutdown`; comportamento com fila cheia.
 
 **Pronto quando:** o histórico via `GET /api/conversations/{id}/messages` contém as mensagens enviadas pelo WS.
 
@@ -379,16 +379,16 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 
 ## Fase 7 — Status, presença e "digitando"
 
-- [ ] `message.delivered`: atualizar `last_delivered` do membro e enviar `message.status {status: "delivered"}`
+- [x] `message.delivered`: atualizar `last_delivered` do membro e enviar `message.status {status: "delivered"}`
       ao remetente (e demais membros, para grupos).
-- [ ] `message.read`: atualizar `last_read` (e `last_delivered`, se menor) e enviar `message.status {status: "read"}`.
-- [ ] Gravar as atualizações de status de forma assíncrona (pela fila de persistência ou fila própria),
+- [x] `message.read`: atualizar `last_read` (e `last_delivered`, se menor) e enviar `message.status {status: "read"}`.
+- [x] Gravar as atualizações de status de forma assíncrona (pela fila de persistência ou fila própria),
       agrupando várias confirmações da mesma conversa.
-- [ ] Em grupos, a resposta de `GET /api/conversations` inclui `last_delivered`/`last_read` de cada membro para o
+- [x] Em grupos, a resposta de `GET /api/conversations` inclui `last_delivered`/`last_read` de cada membro para o
       cliente calcular o status (entregue quando todos receberam, lida quando todos leram).
-- [ ] `typing`: repassar apenas aos outros membros online da conversa, sem persistir;
+- [x] `typing`: repassar apenas aos outros membros online da conversa, sem persistir;
       limitar a frequência por usuário (`TYPING_COOLDOWN`, ex.: no máximo 1 evento a cada 2s).
-- [ ] `GET /api/users` e a lista de membros incluem o estado `online` atual.
+- [x] `GET /api/users` e a lista de membros incluem o estado `online` atual.
 
 **Pronto quando:** o cliente consegue mostrar enviada → entregue → lida, presença e "digitando...".
 
@@ -396,14 +396,14 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 
 ## Fase 8 — Sincronização após reconexão
 
-- [ ] Tratar `sync`: para cada conversa informada, buscar `ListMessagesAfter(conversation_id, last_sequence)`
+- [x] Tratar `sync`: para cada conversa informada, buscar `ListMessagesAfter(conversation_id, last_sequence)`
       e enviar como `message.new` em ordem; conversas do usuário não informadas também são incluídas
       (ex.: grupo criado enquanto estava offline).
-- [ ] Limitar a quantidade por conversa (ex.: 500) — além disso o cliente usa a paginação REST.
-- [ ] Enviar `sync.end` ao terminar.
-- [ ] Mensagens ainda na fila de persistência também devem ser consideradas: consultar o banco **e** um buffer em memória
+- [x] Limitar a quantidade por conversa (ex.: 500) — além disso o cliente usa a paginação REST.
+- [x] Enviar `sync.end` ao terminar.
+- [x] Mensagens ainda na fila de persistência também devem ser consideradas: consultar o banco **e** um buffer em memória
       das mensagens recentes ainda não gravadas, ou forçar a gravação antes da consulta.
-- [ ] Teste: cliente desconecta, recebe mensagens enquanto offline, reconecta e recebe todas, em ordem e sem duplicatas.
+- [x] Teste: cliente desconecta, recebe mensagens enquanto offline, reconecta e recebe todas, em ordem e sem duplicatas.
 
 **Pronto quando:** nenhuma mensagem é perdida em uma queda de conexão.
 
@@ -411,11 +411,11 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 
 ## Fase 9 — Heartbeat e limpeza de conexões
 
-- [ ] Na goroutine de escrita, um `time.Ticker` com `PING_INTERVAL` chama `conn.Ping(ctx)` com timeout `PONG_TIMEOUT`.
-- [ ] Se o ping falhar, cancelar o contexto do cliente, fechar a conexão e desregistrar no Hub.
-- [ ] Garantir que as duas goroutines do cliente terminem quando qualquer uma delas falhar (contexto compartilhado).
-- [ ] Teste: cliente que para de responder é removido do Hub e os contatos recebem `presence {online: false}`.
-- [ ] Verificar ausência de vazamento de goroutines após conexões e desconexões repetidas (`runtime.NumGoroutine`).
+- [x] Na goroutine de escrita, um `time.Ticker` com `PING_INTERVAL` chama `conn.Ping(ctx)` com timeout `PONG_TIMEOUT`.
+- [x] Se o ping falhar, cancelar o contexto do cliente, fechar a conexão e desregistrar no Hub.
+- [x] Garantir que as duas goroutines do cliente terminem quando qualquer uma delas falhar (contexto compartilhado).
+- [x] Teste: cliente que para de responder é removido do Hub e os contatos recebem `presence {online: false}`.
+- [x] Verificar ausência de vazamento de goroutines após conexões e desconexões repetidas (`runtime.NumGoroutine`).
 
 **Pronto quando:** conexões mortas são detectadas e liberadas em até `PING_INTERVAL + PONG_TIMEOUT`.
 
@@ -442,7 +442,10 @@ Ordem de encerramento ao receber `SIGINT`/`SIGTERM`:
 - [x] `go test -race ./...` sem falhas em todas as fases.
 - [x] Teste de carga em `cmd/loadgen`: abre N conexões WebSocket, envia mensagens em grupo e mede
       latência (p50/p90/p99), mensagens por segundo, memória e número de goroutines.
-- [ ] Expor `net/http/pprof` em um endereço separado apenas em modo dev, para analisar CPU e memória.
+- [x] Expor `net/http/pprof` em um endereço separado apenas em modo dev, para analisar CPU e memória.
+
+      > Configurado por `PPROF_ADDRESS`. O servidor de debug roda em um endereço próprio e o `config.Load` recusa
+      > `PPROF_ADDRESS` fora do modo dev, já que os endpoints não têm autenticação.
 - [x] Revisar limites: tamanho de mensagem (`MESSAGE_LIMIT_CHARS`), taxa de mensagens por cliente
       (`TYPING_COOLDOWN`) e tamanho dos buffers (`CLIENT_QUEUE_SIZE`, `PERSISTENCE_QUEUE_SIZE`).
 - [x] Atualizar o `README.md` do back-end com instruções de execução, variáveis novas e resultados do teste de carga.
