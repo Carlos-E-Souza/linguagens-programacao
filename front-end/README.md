@@ -125,5 +125,6 @@ de cada módulo quando executado dentro de `front-end/` ou `back-end/`; `npm run
 `front-end/frontend/`.
 
 A Fase 8 desta branch recupera mensagens após reconexão. O tratamento de mensagens ao vivo, presença e digitação
-pertence à Fase 7, que será integrada depois. Para testar toda a aplicação, use duas instâncias do cliente após essa
-integração.
+pertence à Fase 7, que será integrada depois. A Fase 9 ainda precisa acrescentar criação de conversas na interface.
+Até lá, uma conversa para testes reais deve ser criada pela API. O roteiro completo com duas instâncias depende da
+integração dessas fases.

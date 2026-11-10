@@ -256,7 +256,8 @@ No mock, `mockChat.disconnect()`/`mockChat.reconnect()` no console simulam a que
 Esta branch foi criada a partir de `feat/frontend-wails`, sem o código da Fase 7 de outro participante. O backfill
 é conferido por REST, inclusive quando ultrapassa o limite de 500 mensagens por conversa do WebSocket. O cursor
 persiste no SQLite e só avança depois da faixa completa. Falta integrar o tratamento das mensagens ao vivo da Fase 7
-e executar o roteiro manual com dois clientes contra o back-end real.
+  e executar o roteiro manual com dois clientes contra o back-end real. A criação de conversas pela interface depende
+  da Fase 9; antes disso, conversas para esse roteiro precisam ser criadas pela API.
 
 **Pronto quando:** mensagens recebidas enquanto o cliente estava offline aparecem após reconectar, em ordem.
 
