@@ -100,3 +100,30 @@ wails generate module -tags webkit2_41
 # Binário final em build/bin/
 wails build
 ```
+
+## Execução no Windows (PowerShell)
+
+Use duas janelas. O cliente precisa da branch do back-end `feat/phase-7-11-polish` em outra pasta de trabalho,
+pois `main` ainda não contém o servidor completo.
+
+```powershell
+# Janela 1, dentro do back-end da branch acima:
+$env:DEV_MODE = 'true'
+$env:DATABASE_PATH = '.\chat-demo.db'
+go run ./cmd/server
+
+# Janela 2, dentro de front-end/ nesta branch:
+$env:SERVER_URL = 'http://localhost:8080'
+cd frontend
+npm ci
+cd ..
+wails dev
+```
+
+Confirme que `http://localhost:8080/api/health` responde antes de abrir o cliente. `go test ./...` roda os testes
+de cada módulo quando executado dentro de `front-end/` ou `back-end/`; `npm run build` roda dentro de
+`front-end/frontend/`.
+
+A Fase 8 desta branch recupera mensagens após reconexão. O tratamento de mensagens ao vivo, presença e digitação
+pertence à Fase 7, que será integrada depois. Para testar toda a aplicação, use duas instâncias do cliente após essa
+integração.

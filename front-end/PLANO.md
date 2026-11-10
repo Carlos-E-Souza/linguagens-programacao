@@ -68,6 +68,7 @@ Os erros devolvidos pelos métodos já vêm com texto amigável em português, p
 |------------------------|----------------------------------------------------------|
 | `connection:state`     | `connected` / `connecting` / `disconnected`              |
 | `message:new`          | mensagem completa                                        |
+| `messages:synced`      | lote de mensagens recuperadas após reconexão            |
 | `message:updated`      | `conversation_id`, `client_id`, `id`, `sequence`, `status`, `created_at`, `error` (só em `failed`) |
 | `message:status`       | `conversation_id`, `user_id`, `up_to_sequence`, `status` |
 | `conversation:updated` | conversa com membros e contador de não lidas             |
@@ -79,11 +80,10 @@ Os erros devolvidos pelos métodos já vêm com texto amigável em português, p
 
 ---
 
-> **Estado (Fases 0–6):** implementadas e cobertas por testes com servidores falsos (`httptest`). A validação
-> contra o servidor real fica pendente até as Fases 2–6 do back-end existirem; enquanto isso a interface roda com
-> `mock-bridge.js`. Os formatos de resposta que o back-end ainda não fixou (corpo de erro, membros com nome e
-> `online`, `last_message` em `GET /api/conversations`) seguem o que está em `internal/api/models.go`; o corpo de
-> erro é aceito tanto como `{"code","message"}` quanto como `{"error":{"code","message"}}`.
+> **Estado:** as Fases 0–6 estão implementadas nesta base e a Fase 8 foi acrescentada nesta branch. Os testes
+> automatizados usam servidores falsos (`httptest`). O back-end completo está na branch
+> `feat/phase-7-11-polish`; a validação manual de duas instâncias com ele ainda depende da integração da Fase 7.
+> A interface também pode rodar com `mock-bridge.js`.
 
 ## Fase 0 — Preparação
 
@@ -218,8 +218,8 @@ Os erros devolvidos pelos métodos já vêm com texto amigável em português, p
 - [x] Testes da fila: ordem de reenvio, remoção por ACK, persistência entre reinícios.
 
 Detalhes da implementação: `queue.Queue` persiste pelo `cache` (mensagem `pending` e entrada em `send_queue` na
-mesma transação), envia na ordem e para na primeira falha para nada passar à frente; `ResendAll` roda a cada conexão
-(`OnConnected`) e `RetryDue` a cada 2s reenvia o que está há 10s sem ACK. Na interface, um rascunho por conversa,
+mesma transação), envia na ordem e para na primeira falha para nada passar à frente; `ResendAll` roda depois de
+`sync.end` a cada conexão e `RetryDue` a cada 2s reenvia o que está há 10s sem ACK. Na interface, um rascunho por conversa,
 contador a partir de 3700 caracteres (limite 4000) e "Tentar novamente" abaixo da bolha `failed` (`RetryMessage`).
 No mock, `mockChat.disconnect()`/`mockChat.reconnect()` no console simulam a queda, e mensagens começando com
 `/falha` são recusadas.
@@ -247,11 +247,16 @@ No mock, `mockChat.disconnect()`/`mockChat.reconnect()` no console simulam a que
 
 ## Fase 8 — Sincronização após reconexão
 
-- [ ] Ao conectar, enviar `sync` com `last_sequence` de cada conversa do cache.
-- [ ] Processar as `message.new` recebidas como na Fase 7, ignorando as que já estão no cache.
-- [ ] Ao receber `sync.end`: recarregar a lista de conversas via REST (para membros e grupos novos)
+- [x] Ao conectar, enviar `sync` com o cursor confirmado de cada conversa do cache.
+- [x] Durante o backfill, juntar as `message.new` sem duplicatas; a Fase 7 cuidará das mensagens ao vivo.
+- [x] Ao receber `sync.end`: recarregar a lista de conversas via REST (para membros e grupos novos)
       e reenviar a fila de pendentes.
-- [ ] Detectar buracos na sequência de uma conversa e buscar o trecho faltante via REST.
+- [x] Detectar buracos na sequência de uma conversa e buscar o trecho faltante via REST.
+
+Esta branch foi criada a partir de `feat/frontend-wails`, sem o código da Fase 7 de outro participante. O backfill
+é conferido por REST, inclusive quando ultrapassa o limite de 500 mensagens por conversa do WebSocket. O cursor
+persiste no SQLite e só avança depois da faixa completa. Falta integrar o tratamento das mensagens ao vivo da Fase 7
+e executar o roteiro manual com dois clientes contra o back-end real.
 
 **Pronto quando:** mensagens recebidas enquanto o cliente estava offline aparecem após reconectar, em ordem.
 
