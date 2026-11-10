@@ -76,6 +76,12 @@ CREATE TABLE IF NOT EXISTS send_queue (
   body            TEXT NOT NULL,
   enqueued_at     TEXT NOT NULL
 );
+
+-- Sequência até a qual a reconexão já recuperou todo o histórico novo.
+CREATE TABLE IF NOT EXISTS sync_cursors (
+  conversation_id INTEGER PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+  last_sequence   INTEGER NOT NULL DEFAULT 0
+);
 `
 
 // statusRank ordena os status para que uma atualização nunca faça uma mensagem "voltar" (ex.: read → sent).
@@ -143,6 +149,15 @@ func Open(path string) (*Cache, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("cache: aplicar esquema: %w", err)
+	}
+	// Ao atualizar um cache antigo, congela o ponto de partida antes de qualquer
+	// atualização REST alterar a última mensagem da conversa.
+	if _, err := db.Exec(`INSERT INTO sync_cursors (conversation_id, last_sequence)
+		SELECT c.id, COALESCE((SELECT MAX(m.sequence) FROM messages m WHERE m.conversation_id = c.id), 0)
+		FROM conversations c WHERE NOT EXISTS (
+			SELECT 1 FROM sync_cursors s WHERE s.conversation_id = c.id)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cache: iniciar cursores de sincronização: %w", err)
 	}
 	return &Cache{db: db}, nil
 }
