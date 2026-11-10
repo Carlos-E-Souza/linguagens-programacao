@@ -51,8 +51,14 @@ type Hub struct {
 	// Channels into the Run loop. Only Run reads them.
 	register   chan *Client
 	unregister chan *Client
-	incoming   chan inbound
-	notify     chan Notification
+
+	// drop is a buffered queue of connections the hub itself decided to
+	// disconnect (slow clients). It is separate from unregister so the
+	// loop can enqueue without ever blocking on itself, and buffered so
+	// a burst of drops never stalls delivery.
+	drop     chan *Client
+	incoming chan inbound
+	notify   chan Notification
 
 	// done is closed when Run returns, so callers that need to hand work
 	// to the loop can tell that it is gone instead of blocking forever.
@@ -94,6 +100,10 @@ type Notification struct {
 	UserIDs        []int64
 }
 
+// shutdownGrace is how long the hub waits for the shutdown notice to
+// reach the clients before closing their connections.
+const shutdownGrace = 100 * time.Millisecond
+
 // maxAckCacheEntries bounds the deduplication cache. A client that
 // reconnects and resends will do so quickly, so only recent entries
 // matter; the database unique index remains the real guarantee.
@@ -113,6 +123,7 @@ func New(cfg config.Config, store *db.Store, persister Persister) *Hub {
 		seqs:       make(map[int64]int64),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		drop:       make(chan *Client, 64),
 		incoming:   make(chan inbound, 256),
 		notify:     make(chan Notification, 128),
 		done:       make(chan struct{}),
@@ -140,6 +151,9 @@ func (h *Hub) Run(ctx context.Context) {
 		case client := <-h.unregister:
 			h.handleUnregister(client)
 
+		case client := <-h.drop:
+			h.handleUnregister(client)
+
 		case in := <-h.incoming:
 			h.handleIncoming(ctx, in)
 
@@ -161,12 +175,27 @@ func (h *Hub) shutdown() {
 	h.clients = make(map[int64]map[*Client]struct{})
 	h.mu.Unlock()
 
+	// Tell the clients the server is going away before their queues are
+	// closed, so the frame is actually written. Without this the client
+	// would just see the socket drop and would have to guess whether to
+	// reconnect.
+	if frame, err := encodeFrame(ws.Envelope{Type: ws.TypeServerShutdown}); err == nil {
+		for _, c := range clients {
+			c.trySend(frame)
+		}
+
+		// Give the write goroutines a moment to flush. This is a fixed
+		// grace period rather than a wait group because a client may be
+		// slow or already gone, and shutdown must not hang on it.
+		time.Sleep(shutdownGrace)
+	}
+
 	for _, c := range clients {
 		c.close()
 	}
 
 	h.wg.Wait()
-	slog.Info("hub stopped")
+	slog.Info("hub stopped", "clients_notified", len(clients))
 }
 
 // Register adds a connection to the hub.
@@ -385,12 +414,37 @@ func (h *Hub) deliverToUser(userID int64, frame []byte) {
 	h.mu.RUnlock()
 
 	for _, c := range targets {
-		if !c.trySend(frame) {
-			// The queue is full: this client is too slow. Disconnecting
-			// it protects the other members from waiting on it.
-			slog.Warn("dropping slow client", "user_id", c.UserID())
-			c.close()
+		if c.trySend(frame) {
+			continue
 		}
+
+		// The queue is full: this client is too slow. Disconnecting it
+		// protects the other members from waiting on it.
+		slog.Warn("dropping slow client", "user_id", c.UserID())
+
+		// The removal must go through the hub loop, not be done here:
+		// this function runs on the loop goroutine for some callers and
+		// on a background goroutine for others, so touching the map
+		// directly would race. Closing first unblocks the write
+		// goroutine, which then triggers the normal unregister path.
+		c.close()
+		h.dropClient(c)
+	}
+}
+
+// dropClient queues a client that the hub itself decided to disconnect.
+//
+// The removal has to happen on the loop goroutine, because deliverToUser
+// is also called from background goroutines (presence broadcasts) where
+// touching the membership map would race. The send is non-blocking on a
+// dedicated buffered channel so it can never stall the loop that is
+// calling it; a full queue drops the request, which is harmless because
+// the connection is already closed and whichever goroutine owns it will
+// report the unregister.
+func (h *Hub) dropClient(c *Client) {
+	select {
+	case h.drop <- c:
+	default:
 	}
 }
 

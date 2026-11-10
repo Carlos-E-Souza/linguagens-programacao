@@ -35,9 +35,12 @@ type Client struct {
 	// gone before blocking on a channel send.
 	ctx context.Context
 
-	// closeOnce guards close(send): more than one path may decide the
-	// client is finished, and closing a channel twice panics.
-	closeOnce sync.Once
+	// sendMu guards the closed flag and the send itself. Without it, a
+	// trySend running concurrently with close would send on a closed
+	// channel, which panics. Closing the channel is what tells the write
+	// goroutine to drain and stop, so it cannot simply be left open.
+	sendMu sync.Mutex
+	closed bool
 
 	// typingMu guards lastTyping, which is per connection because the
 	// cooldown is about what the user is currently doing.
@@ -80,6 +83,13 @@ func (c *Client) UserID() int64 {
 // client: dropping the connection is better than letting one stalled
 // consumer block delivery for everyone else.
 func (c *Client) trySend(frame []byte) bool {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+
+	if c.closed {
+		return false
+	}
+
 	select {
 	case c.send <- frame:
 		return true
@@ -92,10 +102,18 @@ func (c *Client) trySend(frame []byte) bool {
 // once, which matters because several goroutines may decide the
 // connection is over at the same time.
 func (c *Client) close() {
-	c.closeOnce.Do(func() {
-		close(c.send)
-		c.cancel()
-	})
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+
+	if c.closed {
+		return
+	}
+	c.closed = true
+
+	// Cancelling before closing lets anything blocked on the context give
+	// up; the close then lets the write goroutine drain and exit.
+	c.cancel()
+	close(c.send)
 }
 
 // allowTyping applies the per-user cooldown and reports whether a typing
@@ -160,4 +178,19 @@ func (c *Client) Next(ctx context.Context) ([]byte, bool) {
 	case <-ctx.Done():
 		return nil, false
 	}
+}
+
+// Ping sends a WebSocket ping and waits for the matching pong.
+//
+// It is called only from the connection's write goroutine, so it does not
+// race with ordinary frame writes: coder/websocket permits a single
+// concurrent writer, and the heartbeat and the outgoing queue share that
+// one goroutine.
+//
+// A failed ping is how a half-open connection is detected. TCP alone will
+// not notice a peer that vanished without closing (a laptop that slept, a
+// network that dropped), so without this the connection and its two
+// goroutines would linger indefinitely.
+func (c *Client) Ping(ctx context.Context) error {
+	return c.conn.Ping(ctx)
 }

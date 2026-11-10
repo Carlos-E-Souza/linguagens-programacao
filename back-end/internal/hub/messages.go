@@ -367,16 +367,26 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 					continue
 				}
 				if !client.trySend(frame) {
-					return
+					// The queue filled up: the client is too slow to
+					// receive the whole backfill. Stop sending, but fall
+					// through so sync.end still goes out below — without
+					// it the client would wait forever, not knowing the
+					// backfill had finished.
+					slog.Warn("sync: client queue full, truncating backfill",
+						"user_id", userID, "conversation_id", conv.ID)
+					break
 				}
 			}
 		}
 
 		endFrame, err := encodeFrame(ws.Envelope{Type: ws.TypeSyncEnd})
 		if err != nil {
+			slog.Error("sync: encode sync.end failed", "error", err)
 			return
 		}
-		client.trySend(endFrame)
+		if !client.trySend(endFrame) {
+			slog.Warn("sync: could not queue sync.end", "user_id", userID)
+		}
 	}()
 }
 

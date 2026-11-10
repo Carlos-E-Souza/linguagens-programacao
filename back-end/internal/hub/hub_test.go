@@ -106,6 +106,33 @@ func (f *hubFixture) stop() {
 type fakeClient struct {
 	*Client
 	inbox chan []byte
+
+	// pending holds frames that were received but not yet asked for, so
+	// a helper can look for a later frame without losing an earlier one.
+	pendingMu sync.Mutex
+	pending   [][]byte
+}
+
+// keep stores a frame that was received but not claimed yet.
+func (c *fakeClient) keep(frame []byte) {
+	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
+	c.pending = append(c.pending, frame)
+}
+
+// claim removes and returns the first buffered frame of the given type.
+func (c *fakeClient) claim(want string) ([]byte, bool) {
+	c.pendingMu.Lock()
+	defer c.pendingMu.Unlock()
+
+	for i, frame := range c.pending {
+		if envelopeType(frame) == want {
+			c.pending = append(c.pending[:i], c.pending[i+1:]...)
+			return frame, true
+		}
+	}
+
+	return nil, false
 }
 
 func (c *fakeClient) drain(timeout time.Duration) [][]byte {
@@ -196,28 +223,66 @@ func (f *hubFixture) createUsers(t *testing.T) (models.User, models.User, models
 	return alice, bob, conv
 }
 
-// decodeType returns the envelope type of a raw frame.
-func decodeType(t *testing.T, frame []byte) string {
-	t.Helper()
+// flushMessages writes the messages collected by the recording persister
+// into the real store, standing in for the persistence worker pool. It is
+// what lets a sync test read back a history.
+func (f *hubFixture) flushMessages(conv models.Conversation) error {
+	f.persister.mu.Lock()
+	batch := make([]models.Message, len(f.persister.messages))
+	copy(batch, f.persister.messages)
+	f.persister.mu.Unlock()
 
+	if len(batch) == 0 {
+		return nil
+	}
+
+	_, err := f.store.InsertMessages(context.Background(), batch)
+	return err
+}
+
+// envelopeType returns the envelope type of a raw frame, or an empty
+// string when the frame cannot be decoded.
+//
+// It deliberately does not take *testing.T: claim calls it while holding
+// a mutex, and a t.Fatalf there would leave the lock held.
+func envelopeType(frame []byte) string {
 	var env ws.Envelope
 	if err := json.Unmarshal(frame, &env); err != nil {
-		t.Fatalf("frame is not a valid envelope: %v (%s)", err, frame)
+		return ""
 	}
 	return env.Type
 }
 
-// waitForType returns the first frame of the wanted type, skipping the
-// presence and other bookkeeping frames the hub emits on its own.
+// decodeType is the test-facing wrapper that fails loudly on bad input.
+func decodeType(t *testing.T, frame []byte) string {
+	t.Helper()
+
+	kind := envelopeType(frame)
+	if kind == "" {
+		t.Fatalf("frame is not a valid envelope: %s", frame)
+	}
+	return kind
+}
+
+// waitForType returns the first frame of the wanted type, keeping every
+// other frame so a later lookup can still find it.
+//
+// Frames are never discarded: a test that waits for message.new and then
+// for sync.end would otherwise lose the terminator when it happened to
+// arrive first.
 func waitForType(t *testing.T, c *fakeClient, want string, timeout time.Duration) []byte {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
+
 	for time.Now().Before(deadline) {
+		// Check what is already buffered before waiting for more.
+		if frame, ok := c.claim(want); ok {
+			return frame
+		}
+
 		for _, frame := range c.drain(50 * time.Millisecond) {
-			if decodeType(t, frame) == want {
-				return frame
-			}
+			c.keep(frame)
 		}
 	}
 
