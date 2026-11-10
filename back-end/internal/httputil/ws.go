@@ -140,19 +140,63 @@ func (s *Server) readLoop(ctx context.Context, client *hub.Client) {
 // coder/websocket allows only one concurrent writer, and serialising here
 // means the hub can hand frames over without coordinating.
 func (s *Server) writeLoop(ctx context.Context, client *hub.Client) {
-	for {
-		frame, ok := client.Next(ctx)
-		if !ok {
-			return
+	// One goroutine forwards the outgoing queue into a plain channel, so
+	// the loop below can select on frames and the heartbeat timer at the
+	// same time. Starting it once — rather than per frame — keeps the
+	// goroutine count flat and avoids leaking a goroutine per message.
+	frames := make(chan []byte)
+	go func() {
+		defer close(frames)
+
+		for {
+			frame, ok := client.Next(ctx)
+			if !ok {
+				return
+			}
+
+			select {
+			case frames <- frame:
+			case <-ctx.Done():
+				return
+			}
 		}
+	}()
 
-		writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
-		err := client.Write(writeCtx, frame)
-		cancel()
+	ticker := time.NewTicker(s.cfg.PingInterval)
+	defer ticker.Stop()
 
-		if err != nil {
-			slog.Debug("websocket write ended", "user_id", client.UserID(), "error", err)
+	for {
+		select {
+		case <-ctx.Done():
 			return
+
+		case <-ticker.C:
+			// The ping doubles as a liveness probe: if the peer is gone,
+			// the write fails and tearing the connection down here is
+			// what releases its goroutines and marks the user offline.
+			pingCtx, cancel := context.WithTimeout(ctx, s.cfg.PongTimeout)
+			err := client.Ping(pingCtx)
+			cancel()
+
+			if err != nil {
+				slog.Debug("websocket heartbeat failed",
+					"user_id", client.UserID(), "error", err)
+				return
+			}
+
+		case frame, ok := <-frames:
+			if !ok {
+				return
+			}
+
+			writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+			err := client.Write(writeCtx, frame)
+			cancel()
+
+			if err != nil {
+				slog.Debug("websocket write ended", "user_id", client.UserID(), "error", err)
+				return
+			}
 		}
 	}
 }
