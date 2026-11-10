@@ -1,6 +1,10 @@
 package events
 
-import "time"
+import (
+	"time"
+
+	"github.com/Carlos-E-Souza/linguagens-programacao/front-end/internal/api"
+)
 
 // Nomes dos eventos emitidos para a interface. A interface os escuta com EventsOn (wailsjs/runtime) em bridge.js.
 const (
@@ -8,6 +12,8 @@ const (
 	ConnectionState = "connection:state"
 	// MessageNew traz uma mensagem completa recebida do servidor.
 	MessageNew = "message:new"
+	// MessagesSynced traz, de uma vez, as mensagens recuperadas após uma reconexão.
+	MessagesSynced = "messages:synced"
 	// MessageUpdated traz a confirmação (ACK) ou a falha definitiva de uma mensagem enviada.
 	MessageUpdated = "message:updated"
 	// MessageStatus informa que um membro confirmou entrega ou leitura até uma sequência.
@@ -47,6 +53,12 @@ type MessageUpdatedPayload struct {
 	CreatedAt      time.Time `json:"created_at"`
 	// Error explica por que a mensagem falhou (só com status failed).
 	Error string `json:"error,omitempty"`
+}
+
+// MessagesSyncedPayload evita um evento de interface por mensagem durante um histórico grande.
+type MessagesSyncedPayload struct {
+	ConversationID int64         `json:"conversation_id"`
+	Messages       []api.Message `json:"messages"`
 }
 
 // MessageStatusPayload é o payload de MessageStatus.

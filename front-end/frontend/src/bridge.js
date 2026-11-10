@@ -8,6 +8,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 export const EVENTS = {
   connectionState: 'connection:state',
   messageNew: 'message:new',
+  messagesSynced: 'messages:synced',
   messageUpdated: 'message:updated',
   messageStatus: 'message:status',
   conversationUpdated: 'conversation:updated',
