@@ -19,9 +19,9 @@ const messageColumns = `
 // resends after a reconnect may reach the database twice, and the unique
 // index is what makes that harmless. The per-message outcome is returned
 // so the caller can tell an insert from a duplicate.
-func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) (int, error) {
+func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) ([]models.Message, error) {
 	if len(messages) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 
 	const insertMsg = `
@@ -35,7 +35,7 @@ func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) (
 		SET last_sequence = ?
 		WHERE id = ? AND last_sequence < ?`
 
-	inserted := 0
+	var stored []models.Message
 
 	err := s.withTx(ctx, func(tx *sql.Tx) error {
 		for _, msg := range messages {
@@ -50,7 +50,20 @@ func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) (
 			if err != nil {
 				return fmt.Errorf("insert message: read affected rows: %w", err)
 			}
-			inserted += int(affected)
+
+			// A duplicate (same sender and client_id) affects no row and
+			// is simply not reported back, which is what makes a resend
+			// harmless.
+			if affected == 0 {
+				continue
+			}
+
+			id, err := result.LastInsertId()
+			if err != nil {
+				return fmt.Errorf("insert message: read id: %w", err)
+			}
+			msg.ID = id
+			stored = append(stored, msg)
 
 			// The guard `last_sequence < ?` keeps the counter monotonic
 			// even though several workers commit batches out of order.
@@ -62,10 +75,10 @@ func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) (
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return inserted, nil
+	return stored, nil
 }
 
 // LastSequence returns the highest sequence assigned in a conversation,
@@ -210,4 +223,30 @@ func reverseMessages(messages []models.Message) {
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
+}
+
+// GetMessageByClientID finds a message by the client-generated ID that
+// uniquely identifies it within one sender.
+//
+// The hub uses it to return the database-assigned ID in the
+// acknowledgement, which arrives before the persistence worker may have
+// committed the row.
+func (s *Store) GetMessageByClientID(ctx context.Context, senderID int64, clientID string) (models.Message, error) {
+	query := `
+		SELECT ` + messageColumns + `
+		FROM messages
+		WHERE sender_id = ? AND client_id = ?`
+
+	var msg models.Message
+	err := s.db.QueryRowContext(ctx, query, senderID, clientID).Scan(
+		&msg.ID, &msg.ConversationID, &msg.Sequence,
+		&msg.SenderID, &msg.ClientID, &msg.Body, &msg.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.Message{}, ErrNotFound
+	}
+	if err != nil {
+		return models.Message{}, fmt.Errorf("get message by client id: %w", err)
+	}
+
+	return msg, nil
 }

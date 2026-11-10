@@ -5,9 +5,13 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/coder/websocket"
+
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/auth"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/config"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/db"
+	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/hub"
+	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
 // maxSearchResults caps how many users a search returns. Without a limit
@@ -48,6 +52,26 @@ type Server struct {
 	issuer    *auth.TokenIssuer
 	validator TokenValidator
 	presence  Presence
+	hub       RealtimeHub
+}
+
+// RealtimeHub is the part of the hub the HTTP layer needs: opening
+// connections, registering them and pushing REST-driven notifications.
+type RealtimeHub interface {
+	NewClient(userID int64, conn *websocket.Conn) *hub.Client
+	Register(client *hub.Client)
+	Unregister(client *hub.Client)
+	Submit(ctx context.Context, client *hub.Client, env ws.Envelope, rawSize int) error
+	IsOnline(userID int64) bool
+	Notify(ctx context.Context, n hub.Notification)
+}
+
+// SetHub attaches the realtime hub. It is set after construction because
+// the hub itself needs the store, and because tests that do not exercise
+// the WebSocket path can leave it nil.
+func (s *Server) SetHub(h RealtimeHub) {
+	s.hub = h
+	s.presence = h
 }
 
 // NewServer builds the HTTP layer.
@@ -90,6 +114,7 @@ func (s *Server) Routes() http.Handler {
 
 	// Public.
 	mux.HandleFunc("GET /api/health", s.handleHealth)
+	mux.HandleFunc("GET /ws", s.handleWS)
 	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 

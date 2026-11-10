@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bufio"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -32,6 +34,28 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 		r.status = http.StatusOK
 	}
 	return r.ResponseWriter.Write(b)
+}
+
+// Hijack forwards the connection takeover a WebSocket upgrade needs.
+//
+// Embedding http.ResponseWriter is not enough on its own: the embedded
+// value is the *interface*, which does not advertise Hijack, so
+// websocket.Accept would find no http.Hijacker and fail with 501.
+// Forwarding explicitly keeps the upgrade working while still recording
+// the status for ordinary requests.
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	return hijacker.Hijack()
+}
+
+// Flush forwards streaming flushes, for the same reason as Hijack.
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // Logging records one line per request with method, path, status and

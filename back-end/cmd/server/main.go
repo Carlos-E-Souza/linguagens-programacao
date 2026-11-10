@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -14,7 +15,9 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/config"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/db"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/httputil"
+	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/hub"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/middleware"
+	storepkg "github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/store"
 )
 
 // shutdownTimeout bounds how long we wait for in-flight requests before
@@ -62,7 +65,24 @@ func run() error {
 		return err
 	}
 
+	// The persistence pool and the hub are started before the HTTP server
+	// so that a request arriving immediately already has both available.
+	pool := storepkg.NewPool(ctx, store, storepkg.DefaultOptions(cfg.PersistenceQueueSize, cfg.PersistenceWorkers))
+
+	realtime := hub.New(cfg, store, pool)
+
+	hubCtx, stopHub := context.WithCancel(context.Background())
+	defer stopHub()
+
+	var background sync.WaitGroup
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		realtime.Run(hubCtx)
+	}()
+
 	api := httputil.NewServer(cfg, store, auth.DefaultHasher(), issuer)
+	api.SetHub(realtime)
 
 	// Order matters: Recover is outermost so it also catches a panic
 	// raised inside Logging itself.
@@ -100,6 +120,16 @@ func run() error {
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+
+	// Order matters. The hub stops first so no new message is accepted,
+	// then the pool drains everything already accepted, and only then is
+	// the database closed underneath it.
+	stopHub()
+	background.Wait()
+
+	if err := pool.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
 
