@@ -350,8 +350,14 @@ func TestUnreadCountAndReadWatermark(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InsertMessages() failed: %v", err)
 	}
-	if got, want := inserted, 3; got != want {
+	if got, want := len(inserted), 3; got != want {
 		t.Fatalf("inserted: got %d, want %d", got, want)
+	}
+	// The returned rows must carry the database-assigned IDs.
+	for _, msg := range inserted {
+		if msg.ID == 0 {
+			t.Errorf("stored message %q has no ID", msg.ClientID)
+		}
 	}
 
 	unreadFor := func(userID int64) int {
@@ -460,7 +466,7 @@ func TestInsertMessagesDeduplicatesByClientID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first InsertMessages() failed: %v", err)
 	}
-	if got, want := inserted, 1; got != want {
+	if got, want := len(inserted), 1; got != want {
 		t.Fatalf("first insert: got %d, want %d", got, want)
 	}
 
@@ -468,7 +474,7 @@ func TestInsertMessagesDeduplicatesByClientID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second InsertMessages() failed: %v", err)
 	}
-	if got, want := inserted, 0; got != want {
+	if got, want := len(inserted), 0; got != want {
 		t.Errorf("duplicate insert: got %d, want %d", got, want)
 	}
 
