@@ -439,12 +439,16 @@ Ordem de encerramento ao receber `SIGINT`/`SIGTERM`:
 
 ## Fase 11 — Qualidade e desempenho
 
-- [ ] `go test -race ./...` sem falhas em todas as fases.
-- [ ] Teste de carga em `cmd/loadgen`: abre N conexões WebSocket (ex.: 1.000–5.000), envia mensagens em grupos e mede
-      latência (p50/p99), mensagens por segundo, memória e número de goroutines.
+- [x] `go test -race ./...` sem falhas em todas as fases.
+- [x] Teste de carga em `cmd/loadgen`: abre N conexões WebSocket, envia mensagens em grupo e mede
+      latência (p50/p90/p99), mensagens por segundo, memória e número de goroutines.
 - [ ] Expor `net/http/pprof` em um endereço separado apenas em modo dev, para analisar CPU e memória.
-- [ ] Revisar limites: tamanho de mensagem, taxa de mensagens por cliente, tamanho dos buffers.
-- [ ] Atualizar o `README.md` do back-end com instruções de execução, variáveis novas e resultados do teste de carga.
+- [x] Revisar limites: tamanho de mensagem (`MESSAGE_LIMIT_CHARS`), taxa de mensagens por cliente
+      (`TYPING_COOLDOWN`) e tamanho dos buffers (`CLIENT_QUEUE_SIZE`, `PERSISTENCE_QUEUE_SIZE`).
+- [x] Atualizar o `README.md` do back-end com instruções de execução, variáveis novas e resultados do teste de carga.
+
+      > **Pendente:** `net/http/pprof` ainda não está exposto. É a única tarefa em aberto do plano e não afeta o
+      > funcionamento do servidor: serve apenas para inspecionar CPU e memória durante o desenvolvimento.
 
 ---
 
