@@ -425,13 +425,13 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 
 Ordem de encerramento ao receber `SIGINT`/`SIGTERM`:
 
-- [ ] 1. Parar de aceitar novas conexões e requisições: `http.Server.Shutdown(ctx)` com prazo (ex.: 15s).
-- [ ] 2. Enviar `server.shutdown` a todos os clientes e fechar as conexões com `websocket.StatusGoingAway`.
-- [ ] 3. Parar o Hub (cancelar seu contexto) e esperar o laço terminar.
-- [ ] 4. Encerrar o pool de persistência, gravando todas as mensagens pendentes.
-- [ ] 5. Fechar o banco.
-- [ ] Usar um `sync.WaitGroup` para as goroutines de longa duração (Hub, workers, conexões) e `context` para o prazo total.
-- [ ] Teste: enviar mensagens e, em seguida, `SIGTERM` — todas devem estar no banco após o encerramento.
+- [x] 1. Parar de aceitar novas conexões e requisições: `http.Server.Shutdown(ctx)` com prazo (ex.: 15s).
+- [x] 2. Enviar `server.shutdown` a todos os clientes e fechar as conexões com `websocket.StatusGoingAway`.
+- [x] 3. Parar o Hub (cancelar seu contexto) e esperar o laço terminar.
+- [x] 4. Encerrar o pool de persistência, gravando todas as mensagens pendentes.
+- [x] 5. Fechar o banco.
+- [x] Usar um `sync.WaitGroup` para as goroutines de longa duração (Hub, workers, conexões) e `context` para o prazo total.
+- [x] Teste: enviar mensagens e, em seguida, `SIGTERM` — todas devem estar no banco após o encerramento.
 
 **Pronto quando:** desligar o servidor não perde mensagens aceitas (que receberam ACK).
 
