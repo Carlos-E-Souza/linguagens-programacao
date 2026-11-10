@@ -21,16 +21,20 @@ cmd/server/            ponto de entrada (main)
 internal/
   config/              leitura das variáveis de ambiente
   auth/                tokens JWT e hash de senhas
-  db/                  conexão com o banco, migrações e repositórios
+  db/                  conexão com o banco e repositórios
+    migrations/        scripts SQL embutidos no binário (//go:embed)
   models/              usuários, conversas, membros e mensagens
   httputil/            handlers da API REST, upgrade do /ws e helpers de JSON
-  middleware/          autenticação JWT, logging
+  middleware/          autenticação JWT, logging e recuperação de panic
   hub/                 hub concorrente que roteia as mensagens
   store/               worker pool de gravação das mensagens
-migrations/            scripts SQL do banco
+  ws/                  envelope e payloads do protocolo WebSocket
 ```
 
 Cada pasta de pacote tem um `doc.go` descrevendo sua responsabilidade.
+
+Os scripts SQL ficam em `internal/db/migrations/`, e não na raiz: `//go:embed` só enxerga arquivos dentro do
+diretório do próprio pacote, então as migrações precisam morar ao lado do código que as aplica.
 
 ## Endpoints
 
