@@ -100,6 +100,10 @@ export function createLoginScreen(props) {
     autocomplete: 'username',
     hint: '3 a 32 caracteres: letras minúsculas, números ou _.',
   });
+  username.input.addEventListener('blur', () => {
+    if (mode === 'register') validateUsername();
+  });
+  username.input.addEventListener('input', () => username.setError(''));
   const displayName = createField({ id: 'display-name', label: 'Nome de exibição', autocomplete: 'name' });
   const password = createField({
     id: 'password',
@@ -182,17 +186,24 @@ export function createLoginScreen(props) {
     username.input.focus();
   }
 
-  /** Validação local; devolve o primeiro campo inválido para receber o foco. */
-  function validate() {
-    const invalid = [];
+  function validateUsername() {
     const user = username.value().trim();
     if (!user) {
       username.setError('Informe o nome de usuário.');
-      invalid.push(username);
-    } else if (mode === 'register' && !USERNAME_PATTERN.test(user)) {
-      username.setError('Use de 3 a 32 letras minúsculas, números ou _.');
-      invalid.push(username);
+      return false;
     }
+    if (mode === 'register' && !USERNAME_PATTERN.test(user)) {
+      username.setError('Use de 3 a 32 letras minúsculas, números ou _.');
+      return false;
+    }
+    username.setError('');
+    return true;
+  }
+
+  /** Validação local; devolve o primeiro campo inválido para receber o foco. */
+  function validate() {
+    const invalid = [];
+    if (!validateUsername()) invalid.push(username);
     if (mode === 'register' && !displayName.value().trim()) {
       displayName.setError('Informe como você quer aparecer.');
       invalid.push(displayName);
