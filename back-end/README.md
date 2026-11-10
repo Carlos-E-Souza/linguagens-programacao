@@ -111,6 +111,32 @@ go get github.com/usuario/pacote@latest
 go mod tidy
 ```
 
+## Teste de carga
+
+`cmd/loadgen` abre N conexões WebSocket, registra os usuários, cria um grupo e mede a latência das confirmações:
+
+```bash
+# 100 clientes, 20 mensagens cada (padrão: 100 clientes, 10 mensagens)
+go run ./cmd/loadgen -server http://localhost:8080 -clients 100 -messages 20
+
+# Acompanhar o progresso a cada 2s
+go run ./cmd/loadgen -clients 500 -messages 50 -report 2s
+```
+
+O relatório traz mensagens enviadas e confirmadas, vazão, latências p50/p90/p99, número de goroutines e heap em uso.
+Um cliente que não consegue acompanhar é desconectado pelo servidor (é o mecanismo de backpressure descrito em
+`PLANO.md`), então um número pequeno de falhas em execuções longas é esperado.
+
+Exemplo de execução local (100 clientes, 20 mensagens cada):
+
+```
+clients:          100
+messages acked:   189
+throughput:       5328 msg/s
+latency p50:      14.94ms
+latency p99:      28.673ms
+```
+
 ## Identificadores do projeto
 
 Referência rápida dos nomes usados neste pacote. A coluna "Onde" indica o arquivo ou contexto em que o
