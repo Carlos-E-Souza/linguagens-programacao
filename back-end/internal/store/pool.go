@@ -12,6 +12,13 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
+// queued is one message waiting to be written, together with the channel
+// its caller is watching for the stored row.
+type queued struct {
+	message models.Message
+	stored  chan models.Message
+}
+
 // batchWriter is the part of db.Store this package needs. Depending on a
 // narrow interface keeps the pool unaware of the rest of the data layer
 // and easy to test with a fake.
@@ -25,7 +32,7 @@ type batchWriter interface {
 // so the hub only enqueues and returns; the workers do the I/O.
 type Pool struct {
 	writer batchWriter
-	queue  chan models.Message
+	queue  chan queued
 
 	workers     int
 	batchSize   int
@@ -84,7 +91,7 @@ func NewPool(ctx context.Context, writer batchWriter, opts Options) *Pool {
 
 	p := &Pool{
 		writer:      writer,
-		queue:       make(chan models.Message, opts.QueueSize),
+		queue:       make(chan queued, opts.QueueSize),
 		workers:     opts.Workers,
 		batchSize:   opts.BatchSize,
 		flushEvery:  opts.FlushEvery,
@@ -99,26 +106,39 @@ func NewPool(ctx context.Context, writer batchWriter, opts Options) *Pool {
 	return p
 }
 
-// Enqueue hands a message to the workers.
+// Enqueue hands a message to the workers and returns a channel that
+// receives the stored row once the batch has been committed.
+//
+// The caller may read from that channel to learn the database-assigned
+// ID, or ignore it entirely, in which case nothing blocks: the channel is
+// buffered with room for exactly one value and the worker never waits on
+// it. This is what lets the hub offer a real message ID in the
+// acknowledgement without making persistence synchronous.
 //
 // When the queue is full it waits, applying backpressure to the hub
 // rather than discarding the message: a message that was acknowledged
 // must eventually reach the database.
-func (p *Pool) Enqueue(ctx context.Context, msg models.Message) error {
+func (p *Pool) Enqueue(ctx context.Context, msg models.Message) (<-chan models.Message, error) {
+	// Buffered so the worker can always deliver the result and move on,
+	// even if the caller stopped caring about it.
+	stored := make(chan models.Message, 1)
+
 	p.closeMu.Lock()
 	closed := p.closed
 	p.closeMu.Unlock()
 
 	if closed {
-		return errors.New("store: pool is closed")
+		return nil, errors.New("store: pool is closed")
 	}
+
+	item := queued{message: msg, stored: stored}
 
 	if p.enqueueWait <= 0 {
 		select {
-		case p.queue <- msg:
-			return nil
+		case p.queue <- item:
+			return stored, nil
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		}
 	}
 
@@ -126,12 +146,12 @@ func (p *Pool) Enqueue(ctx context.Context, msg models.Message) error {
 	defer timer.Stop()
 
 	select {
-	case p.queue <- msg:
-		return nil
+	case p.queue <- item:
+		return stored, nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return nil, ctx.Err()
 	case <-timer.C:
-		return errors.New("store: persistence queue is full")
+		return nil, errors.New("store: persistence queue is full")
 	}
 }
 
@@ -142,36 +162,26 @@ func (p *Pool) worker(ctx context.Context, id int) {
 	ticker := time.NewTicker(p.flushEvery)
 	defer ticker.Stop()
 
-	batch := make([]models.Message, 0, p.batchSize)
+	batch := make([]queued, 0, p.batchSize)
 
 	flush := func() {
 		if len(batch) == 0 {
 			return
 		}
 
-		// The write gets its own context: the pool's context may already
-		// be cancelled during shutdown, and the whole point of draining
-		// is to finish these writes.
-		writeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := p.writeWithRetry(writeCtx, batch); err != nil {
-			slog.Error("persistence failed, messages lost",
-				"worker", id, "count", len(batch), "error", err)
-		}
-
+		p.persistBatch(id, batch)
 		batch = batch[:0]
 	}
 
 	for {
 		select {
-		case msg, ok := <-p.queue:
+		case item, ok := <-p.queue:
 			if !ok {
 				flush()
 				return
 			}
 
-			batch = append(batch, msg)
+			batch = append(batch, item)
 			if len(batch) >= p.batchSize {
 				flush()
 			}
@@ -186,11 +196,60 @@ func (p *Pool) worker(ctx context.Context, id int) {
 	}
 }
 
+// persistBatch writes one batch and reports the stored rows back to the
+// callers that are waiting for them.
+//
+// The write gets its own context: the pool's context may already be
+// cancelled during shutdown, and the whole point of draining is to finish
+// these writes. Every waiter is answered on both paths, so a caller
+// blocked on the result channel is never left hanging.
+func (p *Pool) persistBatch(workerID int, batch []queued) {
+	writeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	messages := make([]models.Message, len(batch))
+	for i, item := range batch {
+		messages[i] = item.message
+	}
+
+	stored, err := p.writeWithRetry(writeCtx, messages)
+	if err != nil {
+		slog.Error("persistence failed, messages lost",
+			"worker", workerID, "count", len(batch), "error", err)
+
+		// The callers are told nothing rather than being left blocked:
+		// a zero value means "not stored", which the hub turns into an
+		// acknowledgement without an ID.
+		for _, item := range batch {
+			item.stored <- models.Message{}
+		}
+		return
+	}
+
+	// The writer returns only the rows it actually inserted, in order, so
+	// duplicates are matched by client_id rather than by position.
+	byClientID := make(map[string]models.Message, len(stored))
+	for _, msg := range stored {
+		byClientID[msg.ClientID] = msg
+	}
+
+	for _, item := range batch {
+		msg, ok := byClientID[item.message.ClientID]
+		if !ok {
+			// A duplicate: the row already existed from an earlier
+			// insert, so no new ID is reported.
+			item.stored <- models.Message{}
+			continue
+		}
+		item.stored <- msg
+	}
+}
+
 // writeWithRetry attempts a batch a few times before giving up.
 //
 // A transient lock contention is worth retrying; a permanent failure is
 // logged with the full batch so the data is at least recoverable by hand.
-func (p *Pool) writeWithRetry(ctx context.Context, batch []models.Message) error {
+func (p *Pool) writeWithRetry(ctx context.Context, batch []models.Message) ([]models.Message, error) {
 	const attempts = 3
 
 	backoff := 50 * time.Millisecond
@@ -200,19 +259,19 @@ func (p *Pool) writeWithRetry(ctx context.Context, batch []models.Message) error
 		inserted, err := p.writer.InsertMessages(ctx, batch)
 		if err == nil {
 			slog.Debug("batch persisted", "count", len(inserted), "batch", len(batch))
-			return nil
+			return inserted, nil
 		}
 		lastErr = err
 
 		select {
 		case <-ctx.Done():
-			return lastErr
+			return nil, lastErr
 		case <-time.After(backoff):
 		}
 		backoff *= 2
 	}
 
-	return lastErr
+	return nil, lastErr
 }
 
 // Shutdown stops accepting new messages and waits for the queue to drain.

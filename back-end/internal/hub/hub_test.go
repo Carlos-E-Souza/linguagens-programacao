@@ -14,24 +14,28 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// recordingPersister captures messages the hub hands over, so a test can
-// assert on persistence without a real database round trip through the
-// worker pool.
+// recordingPersister captures messages the hub hands over and answers
+// with a synthetic stored row, so a test can assert on persistence and on
+// the acknowledgement carrying a real ID without a database round trip.
 type recordingPersister struct {
 	mu       sync.Mutex
 	messages []models.Message
 	nextID   int64
 }
 
-func (r *recordingPersister) Enqueue(ctx context.Context, msg models.Message) error {
+func (r *recordingPersister) Enqueue(ctx context.Context, msg models.Message) (<-chan models.Message, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	r.nextID++
 	msg.ID = r.nextID
 	r.messages = append(r.messages, msg)
+	r.mu.Unlock()
 
-	return nil
+	// Buffered and pre-filled: the worker would deliver asynchronously,
+	// but a test double can answer immediately.
+	stored := make(chan models.Message, 1)
+	stored <- msg
+
+	return stored, nil
 }
 
 func (r *recordingPersister) count() int {
@@ -314,6 +318,15 @@ func TestSendMessageIsAcknowledgedAndDelivered(t *testing.T) {
 	if got, want := ack.Sequence, int64(1); got != want {
 		t.Errorf("ack sequence: got %d, want %d", got, want)
 	}
+	// The acknowledgement must carry the database-assigned ID, not zero:
+	// the client writes this value into its cache and uses it to match
+	// message.new frames, so a zero would corrupt that mapping.
+	if ack.ID == 0 {
+		t.Error("ack id must be the stored message id, got 0")
+	}
+	if ack.CreatedAt == "" {
+		t.Error("ack created_at must be set")
+	}
 
 	// Bob must receive the message.
 	newFrame := waitForType(t, bobClient, ws.TypeMessageNew, 2*time.Second)
@@ -356,6 +369,9 @@ func TestSendMessageDeduplicatesByClientID(t *testing.T) {
 
 	if a.Sequence != b.Sequence {
 		t.Errorf("duplicate got a new sequence: %d then %d", a.Sequence, b.Sequence)
+	}
+	if a.ID != b.ID {
+		t.Errorf("duplicate got a different id: %d then %d", a.ID, b.ID)
 	}
 	if got, want := f.persister.count(), 1; got != want {
 		t.Errorf("persisted messages: got %d, want %d", got, want)

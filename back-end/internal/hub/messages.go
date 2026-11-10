@@ -117,14 +117,38 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 	}
 	h.rememberAck(key, ack)
 
-	// The real message ID is assigned by the database, so the
-	// acknowledgement is finalised once the write succeeds.
+	// The real message ID is assigned by the database, so the hub hands
+	// the message to the persistence pool and waits a bounded moment for
+	// the stored row. Waiting here rather than on the hub loop is what
+	// keeps the acknowledgement truthful without stalling routing: the
+	// delivery below happens first, and the ACK is produced by a
+	// goroutine that only watches this one message.
+	stored := make(chan models.Message, 1)
+
 	if h.persister != nil {
-		if err := h.persister.Enqueue(ctx, msg); err != nil {
+		result, err := h.persister.Enqueue(ctx, msg)
+		if err != nil {
 			slog.Error("enqueue failed", "conversation_id", msg.ConversationID, "error", err)
 			h.sendError(in.client, "internal_error", "could not persist the message", payload.ClientID)
 			return
 		}
+
+		go func() {
+			select {
+			case row, ok := <-result:
+				if ok && row.ID != 0 {
+					stored <- row
+					return
+				}
+			case <-time.After(ackWaitTimeout):
+				slog.Warn("ack sent before the message was stored",
+					"conversation_id", msg.ConversationID, "client_id", payload.ClientID)
+			}
+
+			stored <- models.Message{}
+		}()
+	} else {
+		stored <- models.Message{}
 	}
 
 	// Deliver to every member, including the sender's other connections,
@@ -138,23 +162,59 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 		h.deliverToUser(userID, newFrame)
 	}
 
-	// The acknowledgement is sent immediately, without waiting for the
-	// database. Blocking here would defeat the whole point of the async
-	// persistence pool, and it would stall the hub loop on disk I/O.
+	// previous is the acknowledgement as it can be answered right now:
+	// the sequence is known, the database ID is not.
+	previous := ack
+
+	// One goroutine per message owns the acknowledgement, so the hub loop
+	// never waits on disk.
 	//
-	// The consequence is that ack.ID is zero on the very first delivery:
-	// the row has not been written yet, so no ID exists. The client
-	// already learns the real ID from the message.new frame above, which
-	// the persistence worker fills in, and a duplicate resend gets the
-	// same zero-ID acknowledgement it got the first time, which is the
-	// property that actually matters for deduplication.
-	ackFrame, err := encodeFrame(mustEnvelope(ws.TypeMessageAck, ack))
-	if err != nil {
-		slog.Error("encode message.ack failed", "error", err)
-		return
-	}
-	in.client.trySend(ackFrame)
+	// It must not touch hub state: the ack cache is owned by the loop, and
+	// writing to it from here would race with the next message. The
+	// preliminary entry is therefore already in the cache (recorded above
+	// with the sequence, before any waiting), and the goroutine only
+	// enriches the reply it sends — never the shared map. A resend that
+	// arrives before the ID is known still gets the same sequence, which
+	// is what deduplication depends on.
+	go func() {
+		row := <-stored
+
+		final := previous
+		if row.ID != 0 {
+			final.ID = row.ID
+			final.CreatedAt = row.CreatedAt.Format(time.RFC3339Nano)
+		}
+
+		// The cache is owned by the hub loop, so the enrichment is handed
+		// back to it rather than written here. Until the loop processes
+		// this, a resend still gets the same sequence, which is the part
+		// deduplication actually relies on; the ID follows moments later.
+		select {
+		case h.stored <- storedAck{key: key, ack: final}:
+		default:
+			// The loop is saturated. The reply below is still correct,
+			// and only the cached copy keeps the earlier ID — a rare
+			// case that costs nothing but a slightly staler cache entry.
+			slog.Warn("ack cache update dropped", "client_id", final.ClientID)
+		}
+
+		ackFrame, err := encodeFrame(mustEnvelope(ws.TypeMessageAck, final))
+		if err != nil {
+			slog.Error("encode message.ack failed", "error", err)
+			return
+		}
+		in.client.trySend(ackFrame)
+	}()
 }
+
+// ackWaitTimeout bounds how long the acknowledgement waits for the
+// database-assigned ID.
+//
+// The persistence pool flushes on a 200ms ticker, so this comfortably
+// covers a normal write while still guaranteeing a reply if the database
+// is slow or unavailable: the message is delivered regardless, and the
+// client learns the ID from message.new instead.
+const ackWaitTimeout = 2 * time.Second
 
 // nextSequence returns the next sequence number for a conversation,
 // priming the in-memory counter from the database on first use.

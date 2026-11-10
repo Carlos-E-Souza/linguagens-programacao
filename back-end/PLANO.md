@@ -212,6 +212,11 @@ Todo frame é um envelope JSON:
 | Tipo                  | Dados                                                       | Quando                                                     |
 |-----------------------|-------------------------------------------------------------|------------------------------------------------------------|
 | `message.ack`         | `client_id`, `id`, `conversation_id`, `sequence`, `created_at` | Mensagem aceita (inclusive reenvio de duplicata)         |
+
+O `id` em `message.ack` é o identificador real gravado no banco. O servidor entrega a mensagem e depois responde,
+esperando por um instante limitado (`ackWaitTimeout`, 2s) que a fila de persistência confirme a gravação. Se a
+gravação não acontecer nesse prazo, o ACK ainda é enviado, mas com `id: 0` — nesse caso o cliente aprende o
+identificador pelo frame `message.new`, que sempre carrega o registro completo.
 | `message.new`         | mensagem completa                                           | Nova mensagem em uma conversa do usuário                   |
 | `message.status`      | `conversation_id`, `user_id`, `up_to_sequence`, `status`    | Um membro confirmou entrega (`delivered`) ou leitura (`read`) |
 | `presence`            | `user_id`, `online`                                         | Um contato entrou ou saiu                                  |
