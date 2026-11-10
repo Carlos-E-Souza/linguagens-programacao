@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/db"
+	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/hub"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
@@ -152,6 +153,8 @@ func (s *Server) createDirectConversation(w http.ResponseWriter, r *http.Request
 
 	slog.Info("direct conversation created", "conversation_id", conv.ID, "created_by", userID)
 
+	s.notifyConversation(r, conv.ID)
+
 	s.respondWithConversation(w, r, conv, http.StatusCreated)
 }
 
@@ -190,6 +193,8 @@ func (s *Server) createGroupConversation(w http.ResponseWriter, r *http.Request,
 	}
 
 	slog.Info("group created", "conversation_id", conv.ID, "created_by", userID, "members", len(memberIDs))
+
+	s.notifyConversation(r, conv.ID)
 
 	s.respondWithConversation(w, r, conv, http.StatusCreated)
 }
@@ -252,6 +257,8 @@ func (s *Server) handleAddMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.notifyConversation(r, conv.ID)
+
 	s.respondWithConversation(w, r, conv, http.StatusOK)
 }
 
@@ -300,6 +307,8 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("member removed", "conversation_id", conv.ID, "user_id", targetID, "by", userID)
+
+	s.notifyConversation(r, conv.ID)
 
 	WriteJSON(w, http.StatusOK, map[string]any{"conversation_id": conv.ID, "user_id": targetID})
 }
@@ -409,4 +418,21 @@ func queryInt64(r *http.Request, name string, fallback int64) (int64, error) {
 		return 0, errors.New("invalid integer query parameter")
 	}
 	return value, nil
+}
+
+// notifyConversation tells the hub that a conversation's membership
+// changed, so the connected members refresh their member list.
+//
+// This is deliberately best-effort: the REST call has already succeeded
+// and its result is valid whether or not any client happens to be
+// connected, so a missing hub must not turn the request into an error.
+func (s *Server) notifyConversation(r *http.Request, conversationID int64) {
+	if s.hub == nil {
+		return
+	}
+
+	s.hub.Notify(r.Context(), hub.Notification{
+		Type:           hub.NotifyConversationUpdated,
+		ConversationID: conversationID,
+	})
 }
