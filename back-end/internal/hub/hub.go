@@ -20,7 +20,11 @@ import (
 // the two are independently testable and the hub cannot accidentally
 // block on a database call.
 type Persister interface {
-	Enqueue(ctx context.Context, msg models.Message) error
+	// Enqueue accepts a message for asynchronous writing and returns a
+	// channel that yields the stored row, with its database-assigned ID,
+	// once the batch has been committed. The channel always receives
+	// exactly one value: a zero Message when the row was not stored.
+	Enqueue(ctx context.Context, msg models.Message) (<-chan models.Message, error)
 }
 
 // Hub owns every connected client and routes messages between them.
@@ -52,6 +56,11 @@ type Hub struct {
 	register   chan *Client
 	unregister chan *Client
 
+	// stored reports a message whose database ID has become known. It lets
+	// the loop enrich the dedup cache without the acknowledgement
+	// goroutine touching hub state.
+	stored chan storedAck
+
 	// drop is a buffered queue of connections the hub itself decided to
 	// disconnect (slow clients). It is separate from unregister so the
 	// loop can enqueue without ever blocking on itself, and buffered so
@@ -66,6 +75,12 @@ type Hub struct {
 
 	// wg tracks the long-lived goroutines so shutdown can wait for them.
 	wg sync.WaitGroup
+}
+
+// storedAck carries a finalised acknowledgement back to the loop.
+type storedAck struct {
+	key ackKey
+	ack ws.AckPayload
 }
 
 // ackKey identifies a client-supplied message ID within a sender.
@@ -123,6 +138,7 @@ func New(cfg config.Config, store *db.Store, persister Persister) *Hub {
 		seqs:       make(map[int64]int64),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
+		stored:     make(chan storedAck, 256),
 		drop:       make(chan *Client, 64),
 		incoming:   make(chan inbound, 256),
 		notify:     make(chan Notification, 128),
@@ -153,6 +169,9 @@ func (h *Hub) Run(ctx context.Context) {
 
 		case client := <-h.drop:
 			h.handleUnregister(client)
+
+		case sa := <-h.stored:
+			h.rememberAck(sa.key, sa.ack)
 
 		case in := <-h.incoming:
 			h.handleIncoming(ctx, in)

@@ -77,7 +77,7 @@ func TestPoolPersistsEnqueuedMessages(t *testing.T) {
 			Body:           "body",
 			CreatedAt:      time.Now().UTC(),
 		}
-		if err := pool.Enqueue(ctx, msg); err != nil {
+		if _, err := pool.Enqueue(ctx, msg); err != nil {
 			t.Fatalf("Enqueue(%d) failed: %v", i, err)
 		}
 	}
@@ -143,7 +143,7 @@ func TestPoolShutdownDrainsQueue(t *testing.T) {
 	})
 
 	for i := 1; i <= 5; i++ {
-		if err := pool.Enqueue(ctx, models.Message{
+		if _, err := pool.Enqueue(ctx, models.Message{
 			ConversationID: conv.ID,
 			Sequence:       int64(i),
 			SenderID:       conv.CreatedBy,
@@ -181,7 +181,7 @@ func TestPoolRejectsEnqueueAfterShutdown(t *testing.T) {
 		t.Fatalf("Shutdown() failed: %v", err)
 	}
 
-	err := pool.Enqueue(ctx, models.Message{
+	_, err := pool.Enqueue(ctx, models.Message{
 		ConversationID: conv.ID,
 		Sequence:       1,
 		SenderID:       conv.CreatedBy,
