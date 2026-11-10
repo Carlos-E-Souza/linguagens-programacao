@@ -52,6 +52,22 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadDevModeSuppliesSecret covers the gap between "DEV_MODE
+// tolerates a missing secret" and "the token issuer refuses an empty
+// one": without a placeholder the server would start and then fail.
+func TestLoadDevModeSuppliesSecret(t *testing.T) {
+	t.Setenv("JWT_SECRET", "")
+	t.Setenv("DEV_MODE", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() in dev mode returned an error: %v", err)
+	}
+	if cfg.JWTSecret == "" {
+		t.Error("dev mode must supply a non-empty placeholder secret")
+	}
+}
+
 // TestLoadRejectsEmptySecretOutsideDevMode guards the fail-fast rule:
 // without DEV_MODE, an empty JWT_SECRET must stop the server from
 // starting with an unusable configuration.
