@@ -1,9 +1,12 @@
 // Implementação falsa da ponte, usada fora do Wails (npm run dev) ou com VITE_MOCK=true, para desenvolver a
 // interface sem o servidor. Imita as respostas e os eventos da camada Go.
 //
-// Envio de mensagens: o ACK chega após ~600ms. Para testar outros casos, no console (devtools):
+// Envio de mensagens: o ACK chega após ~600ms; se o outro membro estiver online, a mensagem vira entregue e depois
+// lida, e na conversa com Bruno ele responde. Para testar outros casos, no console (devtools):
 //   mockChat.disconnect() / mockChat.reconnect() — mensagens enviadas offline ficam pendentes até reconectar;
-//   uma mensagem que começa com "/falha" é recusada pelo "servidor" (status failed).
+//   uma mensagem que começa com "/falha" é recusada pelo "servidor" (status failed);
+//   mockChat.receive(11, 'Oi', 3) — mensagem recebida (conversa, texto, remetente);
+//   mockChat.presence(3, true) — contato entra ou sai.
 
 const MINUTE = 60 * 1000;
 const now = Date.now();
@@ -15,6 +18,8 @@ const people = {
   2: { username: 'bruno', display_name: 'Bruno Costa', online: true },
   3: { username: 'carla', display_name: 'Carla Mendes', online: false },
   4: { username: 'diego', display_name: 'Diego Lima', online: true },
+  5: { username: 'elisa', display_name: 'Elisa Prado', online: true },
+  6: { username: 'fabio', display_name: 'Fábio Nunes', online: false },
 };
 const member = (id, role = 'member') => ({
   user_id: id,
@@ -69,6 +74,26 @@ const conversations = [
   last_message: histories[c.id].at(-1),
 }));
 
+const conversationById = (id) => conversations.find((c) => c.id === id);
+
+let nextConversationId = 100;
+function addConversation({ type, name, members }) {
+  const conversation = {
+    id: nextConversationId++,
+    type,
+    name,
+    created_by: me.id,
+    created_at: new Date().toISOString(),
+    last_sequence: 0,
+    last_message: null,
+    unread_count: 0,
+    members,
+  };
+  conversations.push(conversation);
+  histories[conversation.id] = [];
+  return conversation;
+}
+
 export function createMockBridge() {
   const listeners = new Map();
   let loggedIn = false;
@@ -112,6 +137,9 @@ export function createMockBridge() {
     const sequence = history.length + 1;
     const acked = { ...message, id: message.conversation_id * 1000 + sequence, sequence, status: 'sent', created_at: new Date().toISOString() };
     history.push(acked);
+    const conversation = conversationById(acked.conversation_id);
+    conversation.last_sequence = sequence;
+    conversation.last_message = acked;
     emit('message:updated', {
       conversation_id: acked.conversation_id,
       client_id: acked.client_id,
@@ -120,6 +148,56 @@ export function createMockBridge() {
       status: 'sent',
       created_at: acked.created_at,
     });
+    simulateReceipts(conversation, sequence);
+    if (conversation.id === 10) simulateReply(conversation);
+  };
+
+  // Entregue quando todos os outros membros estão online; lida pouco depois.
+  const simulateReceipts = async (conversation, sequence) => {
+    const others = conversation.members.filter((m) => m.user_id !== me.id);
+    if (!others.every((m) => m.online)) return;
+    for (const [status, wait] of [['delivered', 700], ['read', 1500]]) {
+      await delay(wait);
+      for (const m of others) {
+        histories[conversation.id].forEach((msg) => {
+          if (msg.sender_id === me.id && msg.sequence <= sequence) msg.status = status;
+        });
+        emit('message:status', { conversation_id: conversation.id, user_id: m.user_id, up_to_sequence: sequence, status });
+      }
+    }
+  };
+
+  let replying = false;
+  const simulateReply = async (conversation) => {
+    if (replying) return;
+    replying = true;
+    await delay(1800);
+    await delay(2500);
+    replying = false;
+    receive(conversation.id, 'Recebido! Já te respondo com calma.', 2);
+  };
+
+  const receive = (conversationId, body, senderId) => {
+    const conversation = conversationById(conversationId);
+    if (!conversation || state !== 'connected') return;
+    const history = histories[conversationId];
+    const sequence = history.length + 1;
+    const message = {
+      id: conversationId * 1000 + sequence,
+      conversation_id: conversationId,
+      sequence,
+      sender_id: senderId,
+      client_id: crypto.randomUUID(),
+      body,
+      created_at: new Date().toISOString(),
+      status: 'sent',
+    };
+    history.push(message);
+    conversation.last_sequence = sequence;
+    conversation.last_message = message;
+    conversation.unread_count += 1;
+    emit('message:new', structuredClone(message));
+    emit('conversation:updated', structuredClone(conversation));
   };
   const sent = new Map();
   const enqueue = (message) => {
@@ -131,6 +209,11 @@ export function createMockBridge() {
   window.mockChat = {
     disconnect: () => setState('disconnected'),
     reconnect: () => connect(),
+    receive: (conversationId, body = 'Mensagem de teste', senderId = 2) => receive(conversationId, body, senderId),
+    presence: (userId, online) => {
+      for (const c of conversations) for (const m of c.members) if (m.user_id === userId) m.online = online;
+      emit('presence', { user_id: userId, online });
+    },
   };
 
   return {
@@ -193,6 +276,55 @@ export function createMockBridge() {
       const retried = { ...message, body: message.body.replace(/^\/falha\s*/, '') || 'mensagem', status: 'pending' };
       enqueue(retried);
       return structuredClone(retried);
+    },
+    async MarkAsRead(conversationId, upToSequence) {
+      const conversation = conversationById(conversationId);
+      if (!conversation || conversation.unread_count === 0) return;
+      const unread = histories[conversationId].filter((m) => m.sender_id !== me.id && m.sequence > upToSequence).length;
+      conversation.unread_count = unread;
+      emit('conversation:updated', structuredClone(conversation));
+    },
+    async SearchUsers(term) {
+      await delay(250);
+      const q = term.trim().toLowerCase().replace(/^@/, '');
+      if (!q) return [];
+      return Object.entries(people)
+        .filter(([, p]) => p.username.includes(q) || p.display_name.toLowerCase().includes(q))
+        .map(([id, p]) => ({ id: Number(id), username: p.username, display_name: p.display_name, online: p.online }));
+    },
+    async CreateDirectConversation(userId) {
+      await delay(300);
+      if (!people[userId]) throw 'Esse usuário não existe mais.';
+      const existing = conversations.find((c) => c.type === 'direct' && c.members.some((m) => m.user_id === userId));
+      if (existing) return structuredClone(existing);
+      return structuredClone(addConversation({ type: 'direct', name: '', members: [member(me.id), member(userId)] }));
+    },
+    async CreateGroup(name, memberIds) {
+      await delay(400);
+      if (!name.trim()) throw 'Dê um nome ao grupo.';
+      const members = [member(me.id, 'admin'), ...memberIds.map((id) => member(id))];
+      return structuredClone(addConversation({ type: 'group', name: name.trim(), members }));
+    },
+    async AddMembers(conversationId, memberIds) {
+      await delay(300);
+      const conversation = conversationById(conversationId);
+      for (const id of memberIds) {
+        if (!conversation.members.some((m) => m.user_id === id)) conversation.members.push(member(id));
+      }
+      emit('conversation:updated', structuredClone(conversation));
+    },
+    async RemoveMember(conversationId, userId) {
+      await delay(300);
+      const conversation = conversationById(conversationId);
+      const admin = conversation.members.find((m) => m.user_id === me.id)?.role === 'admin';
+      if (userId !== me.id && !admin) throw 'Só administradores podem remover outros membros.';
+      conversation.members = conversation.members.filter((m) => m.user_id !== userId);
+      if (userId === me.id) {
+        conversations.splice(conversations.indexOf(conversation), 1);
+        emit('conversation:removed', { conversation_id: conversationId });
+      } else {
+        emit('conversation:updated', structuredClone(conversation));
+      }
     },
     on(event, callback) {
       if (!listeners.has(event)) listeners.set(event, new Set());

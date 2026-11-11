@@ -1,9 +1,24 @@
-import { loadOlderMessages, logout, openConversation, retryMessage, sendMessage } from '../actions.js';
-import { activeConversation, messagesOf, store } from '../state.js';
+import {
+  addMembers,
+  createGroup,
+  leaveGroup,
+  loadOlderMessages,
+  logout,
+  openConversation,
+  removeMember,
+  retryMessage,
+  searchUsers,
+  sendMessage,
+  startDirectConversation,
+} from '../actions.js';
+import { activeConversation, messagesOf, store, totalUnread } from '../state.js';
 import { createAvatar } from '../components/avatar.js';
 import { createChatWindow } from '../components/chat-window.js';
 import { createConnectionIndicator } from '../components/connection-indicator.js';
 import { createConversationList } from '../components/conversation-list.js';
+import { createGroupDetails } from '../components/group-details.js';
+import { createGroupModal } from '../components/group-modal.js';
+import { createNewConversationModal } from '../components/new-conversation-modal.js';
 import { h, setText } from '../utils/dom.js';
 import { icon } from '../utils/icons.js';
 
@@ -41,7 +56,33 @@ export function createChatScreen() {
       h('div', { class: 'sidebar__identity' }, meName, meUsername),
       logoutButton,
     ),
-    h('h2', { class: 'sidebar__heading' }, 'Conversas'),
+    h(
+      'div',
+      { class: 'sidebar__heading-row' },
+      h('h2', { class: 'sidebar__heading' }, 'Conversas'),
+      h(
+        'button',
+        {
+          class: 'button button--icon',
+          type: 'button',
+          'aria-label': 'Nova conversa',
+          title: 'Nova conversa',
+          on: { click: () => showModal('new-conversation') },
+        },
+        icon('plus'),
+      ),
+      h(
+        'button',
+        {
+          class: 'button button--icon',
+          type: 'button',
+          'aria-label': 'Novo grupo',
+          title: 'Novo grupo',
+          on: { click: () => showModal('group') },
+        },
+        icon('users'),
+      ),
+    ),
     list.el,
   );
 
@@ -58,12 +99,71 @@ export function createChatScreen() {
   const el = h('div', { class: 'chat-screen' }, sidebar, main);
 
   let chatWindow = null;
+  // Janela modal aberta: { kind: 'new-conversation' | 'group' | 'details', view, conversationId }.
+  let modal = null;
+
+  function showModal(kind) {
+    closeModal();
+    const current = store.get();
+    const onClose = closeModal;
+    let view;
+    if (kind === 'new-conversation') {
+      view = createNewConversationModal({
+        search: searchUsers,
+        onStart: async (userId) => {
+          await startDirectConversation(userId);
+          closeModal();
+        },
+        onClose,
+      });
+    } else if (kind === 'group') {
+      view = createGroupModal({
+        search: searchUsers,
+        onCreate: async (name, ids) => {
+          await createGroup(name, ids);
+          closeModal();
+        },
+        onClose,
+      });
+    } else {
+      const conversation = activeConversation(current);
+      if (!conversation || conversation.type !== 'group') return;
+      const id = conversation.id;
+      view = createGroupDetails({
+        conversation,
+        me: current.user,
+        search: searchUsers,
+        onAdd: (ids) => addMembers(id, ids),
+        onRemove: (userId) => removeMember(id, userId),
+        onLeave: async () => {
+          await leaveGroup(id);
+          closeModal();
+        },
+        onClose,
+      });
+      modal = { kind, view, conversationId: id };
+      view.open();
+      return;
+    }
+    modal = { kind, view };
+    view.open();
+  }
+
+  function closeModal() {
+    if (!modal) return;
+    const { view } = modal;
+    modal = null;
+    view.destroy();
+  }
 
   function render(current, prev) {
     setText(meName, current.user.display_name);
     setText(meUsername, `@${current.user.username}`);
 
     if (!prev || current.connection !== prev.connection) indicator.update({ state: current.connection });
+
+    const unread = totalUnread(current);
+    document.title = unread > 0 ? `(${unread > 99 ? '99+' : unread}) Chat` : 'Chat';
 
     if (
       !prev ||
@@ -79,8 +179,19 @@ export function createChatScreen() {
     }
 
     const conversation = activeConversation(current);
+
+    // Detalhes do grupo acompanham a conversa; se ela sumiu (o usuário saiu ou foi removido), a janela fecha.
+    if (modal?.kind === 'details') {
+      const shown = current.conversations.find((c) => c.id === modal.conversationId);
+      if (!shown) closeModal();
+      else if (!prev || shown !== prev.conversations.find((c) => c.id === modal.conversationId)) {
+        modal.view.update({ conversation: shown });
+      }
+    }
+
     if (!conversation) {
       if (chatWindow) {
+        chatWindow.destroy();
         chatWindow = null;
         pane.replaceChildren(noSelection);
       }
@@ -95,6 +206,7 @@ export function createChatScreen() {
       onRetry: () => (messagesOf(store.get(), id).loaded ? loadOlderMessages(id) : reopen(id)),
       onSend: (body) => sendMessage(id, body),
       onRetryMessage: (clientId) => retryMessage(clientId),
+      onShowDetails: () => showModal('details'),
     };
     if (!chatWindow) {
       chatWindow = createChatWindow(windowProps);
@@ -122,6 +234,9 @@ export function createChatScreen() {
     update() {},
     destroy() {
       unsubscribe();
+      closeModal();
+      chatWindow?.destroy();
+      document.title = 'Chat';
     },
   };
 }

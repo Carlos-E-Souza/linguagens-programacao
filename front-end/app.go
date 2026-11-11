@@ -63,6 +63,10 @@ type session struct {
 	syncActive     bool
 	syncFrom       map[int64]int64
 	syncMessages   []api.Message
+
+	// fillGap usa estes campos para não buscar o mesmo buraco duas vezes ao mesmo tempo.
+	gapMu      sync.Mutex
+	gapFilling map[int64]bool
 }
 
 // NewApp cria a aplicação lendo SERVER_URL do ambiente.
@@ -426,8 +430,7 @@ func sendMessage(ws *wsclient.Client, msg api.Message) error {
 	return ws.Send(env)
 }
 
-// consume trata os envelopes recebidos pelo WebSocket. message.new, message.status, presence, typing e sync.end
-// entram nas Fases 7 e 8.
+// consume trata os envelopes recebidos pelo WebSocket.
 func (a *App) consume(s *session) {
 	for {
 		select {
@@ -436,7 +439,13 @@ func (a *App) consume(s *session) {
 			case "message.ack":
 				a.handleAck(s, env.Data)
 			case "message.new":
-				a.collectSyncMessage(s, env.Data)
+				a.handleMessageNew(s, env.Data)
+			case "message.status":
+				a.handleMessageStatus(s, env.Data)
+			case "presence":
+				a.handlePresence(s, env.Data)
+			case "conversation.updated":
+				a.handleConversationUpdated(s, env.Data)
 			case "sync.end":
 				a.finishSync(s)
 			case "error":
@@ -479,7 +488,9 @@ func (a *App) handleAck(s *session, data json.RawMessage) {
 	}
 }
 
-// handleServerError trata o envelope error. Com client_id, a mensagem falhou de vez: sai da fila e vira failed.
+// handleServerError trata o envelope error. Com client_id, a mensagem foi recusada: se o problema é definitivo, ela
+// sai da fila e vira failed com o motivo em português; se é uma falha interna do servidor, continua na fila e é
+// reenviada pela verificação periódica (RetryDue).
 func (a *App) handleServerError(s *session, data json.RawMessage) {
 	var serverErr struct {
 		Code     string `json:"code"`
@@ -491,7 +502,7 @@ func (a *App) handleServerError(s *session, data json.RawMessage) {
 		return
 	}
 	log.Printf("erro do servidor: %s %s", serverErr.Code, serverErr.Message)
-	if serverErr.ClientID == "" {
+	if serverErr.ClientID == "" || serverErr.Code == "internal_error" {
 		return
 	}
 	if err := s.queue.Fail(s.ctx, serverErr.ClientID); err != nil {
@@ -504,14 +515,27 @@ func (a *App) handleServerError(s *session, data json.RawMessage) {
 	if err != nil || !ok || !a.isCurrent(s) {
 		return
 	}
-	reason := serverErr.Message
-	if reason == "" {
-		reason = "O servidor recusou a mensagem."
-	}
 	a.emit(events.MessageUpdated, events.MessageUpdatedPayload{
 		ConversationID: msg.ConversationID, ClientID: msg.ClientID, Status: api.StatusFailed,
-		CreatedAt: msg.CreatedAt, Error: reason,
+		CreatedAt: msg.CreatedAt, Error: sendErrorText(serverErr.Code),
 	})
+}
+
+// sendErrorText traduz o código de erro de message.send para o texto exibido abaixo da mensagem. O texto do servidor
+// (em inglês) só vai para o log.
+func sendErrorText(code string) string {
+	switch code {
+	case "not_a_member":
+		return "Você não participa mais desta conversa."
+	case "conversation_not_found", "invalid_conversation_id":
+		return "Esta conversa não existe mais."
+	case "empty_body":
+		return "A mensagem está vazia."
+	case "body_too_long":
+		return fmt.Sprintf("A mensagem passou do limite de %d caracteres.", maxMessageChars)
+	default:
+		return "O servidor recusou a mensagem."
+	}
 }
 
 // endSession para a conexão e fecha o cache. Não apaga a sessão salva.

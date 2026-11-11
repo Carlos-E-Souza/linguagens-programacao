@@ -14,9 +14,7 @@ export const EVENTS = {
   conversationUpdated: 'conversation:updated',
   conversationRemoved: 'conversation:removed',
   presence: 'presence',
-  typing: 'typing',
   sessionExpired: 'session:expired',
-  error: 'error',
 };
 
 let impl = null;
@@ -53,6 +51,12 @@ export const bridge = {
   loadMessages: call('LoadMessages'),
   sendMessage: call('SendMessage'),
   retryMessage: call('RetryMessage'),
+  markAsRead: call('MarkAsRead'),
+  searchUsers: call('SearchUsers'),
+  createDirectConversation: call('CreateDirectConversation'),
+  createGroup: call('CreateGroup'),
+  addMembers: call('AddMembers'),
+  removeMember: call('RemoveMember'),
   connectionState: call('ConnectionState'),
   /** Escuta um evento; devolve a função que cancela. */
   on: (event, callback) => impl.on(event, callback),

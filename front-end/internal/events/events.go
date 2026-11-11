@@ -24,12 +24,8 @@ const (
 	ConversationRemoved = "conversation:removed"
 	// Presence informa que um contato entrou ou saiu.
 	Presence = "presence"
-	// Typing informa que um membro começou ou parou de digitar.
-	Typing = "typing"
 	// SessionExpired avisa que o token não é mais válido; a interface volta para o login.
 	SessionExpired = "session:expired"
-	// Error leva uma mensagem de erro amigável para a interface.
-	Error = "error"
 )
 
 // Valores do evento ConnectionState.
@@ -78,16 +74,4 @@ type ConversationRemovedPayload struct {
 type PresencePayload struct {
 	UserID int64 `json:"user_id"`
 	Online bool  `json:"online"`
-}
-
-// TypingPayload é o payload de Typing.
-type TypingPayload struct {
-	ConversationID int64 `json:"conversation_id"`
-	UserID         int64 `json:"user_id"`
-	Active         bool  `json:"active"`
-}
-
-// ErrorPayload é o payload de Error.
-type ErrorPayload struct {
-	Message string `json:"message"`
 }

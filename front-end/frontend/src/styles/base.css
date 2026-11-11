@@ -96,6 +96,26 @@ input {
   background: var(--color-accent-hover);
 }
 
+.button--secondary {
+  border-color: var(--color-line);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.button--secondary:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.button--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+  background: var(--color-surface);
+  color: var(--color-danger);
+}
+
+.button--danger:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+}
+
 .button--link {
   min-height: auto;
   padding: 0;

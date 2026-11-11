@@ -15,7 +15,7 @@ export function createConversationList(props) {
     { class: 'empty-state conversation-list__empty' },
     h('span', { class: 'empty-state__icon' }, icon('inbox')),
     h('p', { class: 'empty-state__title' }, 'Nenhuma conversa ainda'),
-    h('p', { class: 'empty-state__text' }, 'Quando alguém conversar com você, a conversa aparece aqui.'),
+    h('p', { class: 'empty-state__text' }, 'Use o botão + para começar uma conversa ou o de grupo para reunir várias pessoas.'),
   );
   const el = h('nav', { class: 'conversation-list' }, list, empty);
   const items = new Map();
@@ -38,7 +38,7 @@ export function createConversationList(props) {
       ),
     );
     const li = h('li', { class: 'conversation-list__item' }, button);
-    return { li, button, avatar, title, time, preview, badge };
+    return { li, button, avatar, title, time, preview, badge, unread: 0 };
   }
 
   function updateItem(item, conversation) {
@@ -63,6 +63,13 @@ export function createConversationList(props) {
     item.badge.hidden = unread === 0;
     setText(item.badge, unread > 99 ? '99+' : String(unread));
     toggleClass(item.button, 'conversation-list__button--unread', unread > 0);
+    if (unread > item.unread) {
+      // Destaque para mensagem nova: reinicia a animação do contador.
+      item.badge.classList.remove('conversation-list__badge--bump');
+      void item.badge.offsetWidth;
+      item.badge.classList.add('conversation-list__badge--bump');
+    }
+    item.unread = unread;
 
     const active = conversation.id === props.activeId;
     toggleClass(item.button, 'conversation-list__button--active', active);

@@ -65,8 +65,15 @@
   white-space: nowrap;
 }
 
+.sidebar__heading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2) var(--space-1) var(--space-4);
+}
+
 .sidebar__heading {
-  padding: var(--space-4) var(--space-4) var(--space-2);
+  flex: 1;
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);
   color: var(--color-ink-muted);
@@ -159,6 +166,15 @@
   text-align: center;
 }
 
+/* Mensagem nova em conversa não aberta: o contador pulsa uma vez */
+.conversation-list__badge--bump {
+  animation: badge-bump var(--duration-base) var(--ease);
+}
+
+@keyframes badge-bump {
+  50% { transform: scale(1.25); }
+}
+
 /* Não lidas: título e prévia em destaque, horário na cor de destaque */
 .conversation-list__button--unread .conversation-list__title,
 .conversation-list__button--unread .conversation-list__preview {
@@ -231,6 +247,10 @@
   font-weight: var(--weight-bold);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chat-window__details {
+  margin-left: auto;
 }
 
 .chat-window__subtitle {

@@ -283,29 +283,40 @@ func saveConversation(ctx context.Context, tx *sql.Tx, conv api.Conversation) er
 	if conv.LastMessage != nil {
 		msg := *conv.LastMessage
 		msg.ConversationID = conv.ID
-		return saveMessage(ctx, tx, msg)
+		if err := saveMessage(ctx, tx, msg); err != nil {
+			return err
+		}
 	}
-	return nil
+	// As posições dos membros vieram do servidor: o status das mensagens próprias pode ter avançado.
+	_, err = refreshOwnStatuses(ctx, tx, conv.ID)
+	return err
+}
+
+// conversationColumns são as colunas lidas por scanConversation.
+const conversationColumns = `id, type, name, created_by, last_sequence, unread_count, created_at`
+
+func scanConversation(row interface{ Scan(...any) error }) (api.Conversation, error) {
+	var conv api.Conversation
+	var createdAt string
+	err := row.Scan(&conv.ID, &conv.Type, &conv.Name, &conv.CreatedBy, &conv.LastSequence, &conv.UnreadCount, &createdAt)
+	conv.CreatedAt = parseTime(createdAt)
+	return conv, err
 }
 
 // ListConversations devolve as conversas do cache, da atividade mais recente para a mais antiga.
 func (c *Cache) ListConversations(ctx context.Context) ([]api.Conversation, error) {
-	rows, err := c.db.QueryContext(ctx, `
-		SELECT id, type, name, created_by, last_sequence, unread_count, created_at
+	rows, err := c.db.QueryContext(ctx, `SELECT `+conversationColumns+`
 		FROM conversations ORDER BY last_activity DESC, id DESC`)
 	if err != nil {
 		return nil, wrap("listar conversas", err)
 	}
 	var conversations []api.Conversation
 	for rows.Next() {
-		var conv api.Conversation
-		var createdAt string
-		if err := rows.Scan(&conv.ID, &conv.Type, &conv.Name, &conv.CreatedBy, &conv.LastSequence,
-			&conv.UnreadCount, &createdAt); err != nil {
+		conv, err := scanConversation(rows)
+		if err != nil {
 			rows.Close()
 			return nil, wrap("ler conversa", err)
 		}
-		conv.CreatedAt = parseTime(createdAt)
 		conversations = append(conversations, conv)
 	}
 	rows.Close()
@@ -315,33 +326,44 @@ func (c *Cache) ListConversations(ctx context.Context) ([]api.Conversation, erro
 
 	// Membros e última mensagem são lidos depois de fechar rows: há uma única conexão.
 	for i := range conversations {
-		conv := &conversations[i]
-		if conv.Members, err = c.listMembers(ctx, conv.ID); err != nil {
+		if err := c.fillConversation(ctx, &conversations[i]); err != nil {
 			return nil, err
-		}
-		last, err := c.ListMessages(ctx, conv.ID, 0, 1)
-		if err != nil {
-			return nil, err
-		}
-		if len(last) == 1 {
-			conv.LastMessage = &last[0]
 		}
 	}
 	return conversations, nil
 }
 
-// GetConversation devolve uma conversa do cache. ok é false se ela não existir.
+// GetConversation devolve uma conversa do cache, com membros e última mensagem. ok é false se ela não existir.
 func (c *Cache) GetConversation(ctx context.Context, id int64) (conv api.Conversation, ok bool, err error) {
-	conversations, err := c.ListConversations(ctx)
+	conv, err = scanConversation(c.db.QueryRowContext(ctx, `SELECT `+conversationColumns+`
+		FROM conversations WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return api.Conversation{}, false, nil
+	}
 	if err != nil {
+		return api.Conversation{}, false, wrap("ler conversa", err)
+	}
+	if err := c.fillConversation(ctx, &conv); err != nil {
 		return api.Conversation{}, false, err
 	}
-	for _, conv := range conversations {
-		if conv.ID == id {
-			return conv, true, nil
-		}
+	return conv, true, nil
+}
+
+// fillConversation completa a conversa com os membros e a última mensagem.
+func (c *Cache) fillConversation(ctx context.Context, conv *api.Conversation) error {
+	var err error
+	if conv.Members, err = c.listMembers(ctx, conv.ID); err != nil {
+		return err
 	}
-	return api.Conversation{}, false, nil
+	last, err := c.ListMessages(ctx, conv.ID, 0, 1)
+	if err != nil {
+		return err
+	}
+	conv.LastMessage = nil
+	if len(last) == 1 {
+		conv.LastMessage = &last[0]
+	}
+	return nil
 }
 
 func (c *Cache) listMembers(ctx context.Context, conversationID int64) ([]api.Member, error) {
@@ -370,8 +392,16 @@ func (c *Cache) listMembers(ctx context.Context, conversationID int64) ([]api.Me
 // histórico do servidor completam a mensagem pendente criada localmente, sem duplicar.
 func (c *Cache) SaveMessages(ctx context.Context, messages []api.Message) error {
 	return c.inTx(ctx, func(tx *sql.Tx) error {
+		touched := make(map[int64]bool)
 		for _, msg := range messages {
 			if err := saveMessage(ctx, tx, msg); err != nil {
+				return err
+			}
+			touched[msg.ConversationID] = true
+		}
+		// O histórico do servidor chega como sent; as posições dos membros dizem se já foi entregue ou lido.
+		for id := range touched {
+			if _, err := refreshOwnStatuses(ctx, tx, id); err != nil {
 				return err
 			}
 		}

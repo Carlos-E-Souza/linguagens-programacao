@@ -1,0 +1,313 @@
+/* Janelas modais (nova conversa, novo grupo, detalhes do grupo) e seus componentes */
+
+.modal {
+  width: min(480px, calc(100vw - 2 * var(--space-6)));
+  max-height: min(640px, calc(100vh - 2 * var(--space-6)));
+  margin: auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-card);
+}
+
+.modal[open] {
+  display: flex;
+  animation: modal-in var(--duration-base) var(--ease);
+}
+
+.modal::backdrop {
+  background: rgb(15 20 28 / 45%);
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.modal__card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.modal__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3) var(--space-5);
+}
+
+.modal__title {
+  flex: 1;
+  overflow: hidden;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modal__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 0;
+  padding: 0 var(--space-5) var(--space-5);
+  overflow-y: auto;
+}
+
+.modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.modal__footer {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-line);
+}
+
+.modal__error {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+/* Listas dos diálogos: sem marcador nem recuo do navegador */
+.user-search__results,
+.member-picker__chips,
+.group-details__members {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Busca de pessoas */
+.user-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.user-search__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.user-search__control > .icon {
+  position: absolute;
+  left: var(--space-3);
+  color: var(--color-ink-subtle);
+  pointer-events: none;
+}
+
+.user-search__input {
+  width: 100%;
+  padding-left: calc(var(--space-3) + 1em + var(--space-2));
+}
+
+.user-search__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.25rem;
+  font-size: var(--text-xs);
+  color: var(--color-ink-subtle);
+}
+
+.user-search__status--error {
+  color: var(--color-danger);
+}
+
+.user-search__results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-search__results:empty {
+  display: none;
+}
+
+.user-search__button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.user-search__button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+}
+
+.user-search__button--selected {
+  background: var(--color-surface-active);
+}
+
+.user-search__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.user-search__name {
+  overflow: hidden;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-search__username {
+  font-size: var(--text-xs);
+  color: var(--color-ink-muted);
+}
+
+.user-search__check {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-full);
+  color: transparent;
+  font-size: 14px;
+}
+
+.user-search__button--selected .user-search__check {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+/* Pessoas escolhidas */
+.member-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.member-picker__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.member-picker__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-1) 2px var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-active);
+  font-size: var(--text-sm);
+}
+
+.member-picker__remove {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.member-picker__remove:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-ink);
+}
+
+/* Detalhes do grupo */
+.group-details__summary {
+  font-size: var(--text-sm);
+  color: var(--color-ink-muted);
+}
+
+.group-details__members {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group-details__member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 48px;
+  padding: var(--space-1) 0;
+}
+
+.group-details__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.group-details__name {
+  overflow: hidden;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-details__meta {
+  font-size: var(--text-xs);
+  color: var(--color-ink-muted);
+}
+
+.group-details__role {
+  flex: none;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-active);
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.group-details__remove {
+  flex: none;
+  font-size: var(--text-sm);
+  color: var(--color-ink-muted);
+}
+
+.group-details__remove--confirm {
+  color: var(--color-danger);
+  font-weight: var(--weight-medium);
+}
+
+.group-details__add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-line);
+}
+
+.group-details__actions {
+  display: flex;
+  justify-content: flex-end;
+}

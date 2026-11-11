@@ -1,16 +1,19 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	"github.com/Carlos-E-Souza/linguagens-programacao/front-end/internal/api"
 	"github.com/Carlos-E-Souza/linguagens-programacao/front-end/internal/events"
 	"github.com/Carlos-E-Souza/linguagens-programacao/front-end/internal/wsclient"
 )
+
+// syncTimeout é o prazo para o sync.end chegar depois do pedido de sincronização.
+var syncTimeout = 15 * time.Second
 
 // startSync é chamada antes de iniciar a leitura da nova conexão. Assim o cursor é
 // fotografado antes de qualquer mensagem nova chegar por ela.
@@ -40,10 +43,15 @@ func (a *App) startSync(s *session) {
 
 	s.syncMu.Lock()
 	s.syncGeneration++
+	generation := s.syncGeneration
 	s.syncActive = true
 	s.syncFrom = from
 	s.syncMessages = nil
 	s.syncMu.Unlock()
+	// O servidor pode não mandar sync.end (fila cheia, falha ao ler o banco). Sem prazo, as mensagens ao vivo
+	// ficariam presas no buffer até a próxima reconexão. completeSync confere tudo pelo REST, então encerrar antes
+	// do fim do backfill não perde mensagens: o que chegar depois é tratado como mensagem ao vivo.
+	time.AfterFunc(syncTimeout, func() { a.finishSyncGeneration(s, generation) })
 
 	env, err := wsclient.NewEnvelope("sync", map[string]any{"conversations": positions})
 	if err == nil {
@@ -58,29 +66,32 @@ func (a *App) startSync(s *session) {
 	}
 }
 
-// collectSyncMessage guarda os quadros do backfill até sync.end. O tratamento de
-// mensagens ao vivo pertence à Fase 7, desenvolvida em outra branch.
-func (a *App) collectSyncMessage(s *session, data json.RawMessage) {
-	var msg api.Message
-	if err := json.Unmarshal(data, &msg); err != nil || msg.ConversationID <= 0 || msg.Sequence <= 0 || msg.ClientID == "" {
-		log.Printf("message.new de sync inválida: %s", data)
-		return
-	}
-	msg.Status = api.StatusSent
+// collectSyncMessage guarda os quadros do backfill até sync.end. Devolve false fora da
+// sincronização: a mensagem é ao vivo e segue para handleMessageNew.
+func (a *App) collectSyncMessage(s *session, msg api.Message) bool {
 	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
 	if s.syncActive {
 		s.syncMessages = append(s.syncMessages, msg)
 	}
-	s.syncMu.Unlock()
+	return s.syncActive
 }
 
+// finishSync trata o sync.end da sincronização em andamento.
 func (a *App) finishSync(s *session) {
 	s.syncMu.Lock()
-	if !s.syncActive {
+	generation := s.syncGeneration
+	s.syncMu.Unlock()
+	a.finishSyncGeneration(s, generation)
+}
+
+// finishSyncGeneration encerra a sincronização indicada, se ela ainda estiver ativa: pelo sync.end ou pelo prazo.
+func (a *App) finishSyncGeneration(s *session, generation uint64) {
+	s.syncMu.Lock()
+	if !s.syncActive || s.syncGeneration != generation || s.ctx.Err() != nil {
 		s.syncMu.Unlock()
 		return
 	}
-	generation := s.syncGeneration
 	from := s.syncFrom
 	received := s.syncMessages
 	s.syncActive = false
@@ -160,6 +171,13 @@ func (a *App) completeSync(s *session, generation uint64, from map[int64]int64, 
 			}
 			if a.syncIsCurrent(s, generation) {
 				a.emit(events.MessagesSynced, events.MessagesSyncedPayload{ConversationID: conv.ID, Messages: messages})
+			}
+			// Confirma ao servidor o recebimento do que chegou enquanto estava offline.
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].SenderID != s.user.ID {
+					a.sendDelivered(s, conv.ID, messages[i].Sequence)
+					break
+				}
 			}
 		}
 		if complete {

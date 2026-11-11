@@ -51,3 +51,8 @@ export function activeConversation(state) {
 export function messagesOf(state, conversationId) {
   return state.messages[conversationId] ?? { items: [], hasMore: true, loading: false, loaded: false, error: '' };
 }
+
+/** Soma das não lidas, usada no título da janela. */
+export function totalUnread(state) {
+  return state.conversations.reduce((sum, c) => sum + (c.unread_count ?? 0), 0);
+}

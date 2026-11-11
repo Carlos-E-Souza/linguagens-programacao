@@ -99,7 +99,7 @@ func TestSendAndReceive(t *testing.T) {
 		}
 	})
 	c, states := newTestClient(wsURL(t, srv), "valido")
-	if err := c.Send(Envelope{Type: "typing"}); !errors.Is(err, ErrNotConnected) {
+	if err := c.Send(Envelope{Type: "sync"}); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("Send sem conexão = %v", err)
 	}
 
@@ -108,13 +108,13 @@ func TestSendAndReceive(t *testing.T) {
 	go func() { done <- c.Run(ctx) }()
 	waitState(t, states, StateConnected)
 
-	env, _ := NewEnvelope("typing", map[string]any{"conversation_id": 1, "active": true})
+	env, _ := NewEnvelope("message.read", map[string]any{"conversation_id": 1, "up_to_sequence": 3})
 	if err := c.Send(env); err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case got := <-c.Received():
-		if got.Type != "typing" || string(got.Data) != `{"active":true,"conversation_id":1}` {
+		if got.Type != "message.read" || string(got.Data) != `{"conversation_id":1,"up_to_sequence":3}` {
 			t.Errorf("recebido = %s %s", got.Type, got.Data)
 		}
 	case <-time.After(3 * time.Second):

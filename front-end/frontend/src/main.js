@@ -4,6 +4,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/login.css';
 import './styles/chat.css';
+import './styles/dialogs.css';
 
 import { boot } from './actions.js';
 import { store } from './state.js';

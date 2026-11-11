@@ -5,6 +5,9 @@ import { bridge, EVENTS, errorMessage, initBridge } from './bridge.js';
 import { initialState, messagesOf, store } from './state.js';
 import { mergeMessage, mergeMessages, sortConversations } from './utils/conversations.js';
 
+// Intervalo mínimo para repetir MarkAsRead da mesma posição quando o servidor ainda indica não lidas.
+const MARK_READ_RETRY_MS = 2000;
+
 /** Inicia a ponte, registra os eventos do Go e tenta restaurar a sessão salva. */
 export async function boot() {
   await initBridge();
@@ -22,11 +25,16 @@ export async function boot() {
 function listenToBackend() {
   bridge.on(EVENTS.connectionState, (connection) => store.set({ connection }));
   bridge.on(EVENTS.conversationUpdated, upsertConversation);
+  bridge.on(EVENTS.messageNew, applyIncomingMessage);
   bridge.on(EVENTS.messageUpdated, applyMessageUpdate);
+  bridge.on(EVENTS.messageStatus, applyReceipt);
   bridge.on(EVENTS.messagesSynced, applySyncedMessages);
   bridge.on(EVENTS.conversationRemoved, ({ conversation_id: id }) => removeConversation(id));
+  bridge.on(EVENTS.presence, applyPresence);
   bridge.on(EVENTS.sessionExpired, () => resetToLogin('Sua sessão expirou. Entre novamente para continuar.'));
-  bridge.on(EVENTS.error, ({ message }) => console.warn('Erro da camada Go:', message));
+  // Voltar para a janela conta como ver a conversa aberta.
+  window.addEventListener('focus', markActiveAsRead);
+  document.addEventListener('visibilitychange', markActiveAsRead);
 }
 
 /** Entra com usuário e senha. Erros sobem para a tela exibir. */
@@ -47,6 +55,7 @@ export async function logout() {
 }
 
 function resetToLogin(notice) {
+  lastMarked.clear();
   store.set({ ...initialState, screen: 'login', notice });
 }
 
@@ -77,6 +86,8 @@ function upsertConversation(conversation) {
       : state.messages;
     return { conversations: sortConversations([...others, conversation]), messages };
   });
+  // Ex.: não lidas que voltaram do servidor depois de uma leitura feita sem conexão.
+  if (conversation.id === store.get().activeConversationId && conversation.unread_count > 0) markActiveAsRead();
 }
 
 function removeConversation(id) {
@@ -95,6 +106,7 @@ export async function openConversation(id) {
   if (store.get().activeConversationId === id) return;
   store.set({ activeConversationId: id });
   if (!messagesOf(store.get(), id).loaded) await loadPage(id, 0);
+  markActiveAsRead();
 }
 
 /** Carrega a página anterior à mensagem mais antiga exibida (rolagem infinita para cima). */
@@ -136,6 +148,75 @@ function applySyncedMessages({ conversation_id: id, messages }) {
       items: page.loaded ? mergeMessages(page.items, messages) : page.items,
     })),
   }));
+  if (id === store.get().activeConversationId) markActiveAsRead();
+}
+
+/** Mensagem recebida ao vivo. A prévia e as não lidas chegam em seguida por conversation:updated. */
+function applyIncomingMessage(message) {
+  const id = message.conversation_id;
+  store.set((state) => {
+    const page = messagesOf(state, id);
+    if (!page.loaded) return {};
+    return { messages: updateMessages(state, id, () => ({ ...page, items: mergeMessages(page.items, [message]) })) };
+  });
+  if (id === store.get().activeConversationId) markActiveAsRead();
+}
+
+const STATUS_RANK = { sent: 1, delivered: 2, read: 3 };
+
+/**
+ * Entregue/lida das minhas mensagens até up_to_sequence. A camada Go já calcula a posição comum a todos os outros
+ * membros, então em grupos o status só avança quando todos confirmaram.
+ */
+function applyReceipt({ conversation_id: id, up_to_sequence: upTo, status }) {
+  const me = store.get().user?.id;
+  const promote = (m) =>
+    m.sender_id === me && m.sequence > 0 && m.sequence <= upTo && (STATUS_RANK[m.status] ?? 99) < STATUS_RANK[status]
+      ? { ...m, status }
+      : m;
+  store.set((state) => {
+    const page = messagesOf(state, id);
+    if (!page.loaded) return {};
+    const items = page.items.map(promote);
+    if (items.every((m, i) => m === page.items[i])) return {};
+    return { messages: updateMessages(state, id, () => ({ ...page, items })) };
+  });
+}
+
+/** Contato entrou ou saiu: atualiza o membro em todas as conversas. */
+function applyPresence({ user_id: userId, online }) {
+  store.set((state) => ({
+    conversations: state.conversations.map((conversation) =>
+      conversation.members?.some((m) => m.user_id === userId && m.online !== online)
+        ? {
+            ...conversation,
+            members: conversation.members.map((m) => (m.user_id === userId ? { ...m, online } : m)),
+          }
+        : conversation,
+    ),
+  }));
+}
+
+// Última posição enviada em MarkAsRead por conversa: { upTo, at }.
+const lastMarked = new Map();
+
+/**
+ * Marca a conversa aberta como lida até a maior sequência carregada, se a janela estiver em foco e visível.
+ * Só chama a camada Go quando a posição avançou ou quando ainda há não lidas.
+ */
+export function markActiveAsRead() {
+  const state = store.get();
+  const id = state.activeConversationId;
+  if (id == null || !document.hasFocus() || document.visibilityState !== 'visible') return;
+  const page = messagesOf(state, id);
+  if (!page.loaded) return;
+  const upTo = page.items.reduce((max, m) => Math.max(max, m.sequence || 0), 0);
+  if (upTo === 0) return;
+  const unread = state.conversations.find((c) => c.id === id)?.unread_count ?? 0;
+  const last = lastMarked.get(id);
+  if (last && upTo <= last.upTo && (unread === 0 || Date.now() - last.at < MARK_READ_RETRY_MS)) return;
+  lastMarked.set(id, { upTo: Math.max(upTo, last?.upTo ?? 0), at: Date.now() });
+  bridge.markAsRead(id, upTo).catch((error) => console.error(errorMessage(error)));
 }
 
 // ACKs que chegam antes de a chamada SendMessage terminar (a fila envia na hora). Aplicados quando a mensagem
@@ -195,4 +276,58 @@ function putOwnMessage(message) {
     });
     return { messages, conversations: sortConversations(conversations) };
   });
+}
+
+/** Busca pessoas para conversas e grupos. Rejeita com Error exibível. */
+export async function searchUsers(term) {
+  try {
+    return await bridge.searchUsers(term);
+  } catch (error) {
+    throw new Error(errorMessage(error));
+  }
+}
+
+/** Abre a conversa individual com a pessoa, criando-a se preciso. */
+export async function startDirectConversation(userId) {
+  await enterConversation(() => bridge.createDirectConversation(userId));
+}
+
+/** Cria um grupo e abre a conversa. */
+export async function createGroup(name, memberIds) {
+  await enterConversation(() => bridge.createGroup(name, memberIds));
+}
+
+async function enterConversation(create) {
+  let conversation;
+  try {
+    conversation = await create();
+  } catch (error) {
+    throw new Error(errorMessage(error));
+  }
+  upsertConversation(conversation);
+  await openConversation(conversation.id);
+}
+
+/** Adiciona pessoas ao grupo. A conversa atualizada chega por conversation:updated. */
+export async function addMembers(conversationId, memberIds) {
+  try {
+    await bridge.addMembers(conversationId, memberIds);
+  } catch (error) {
+    throw new Error(errorMessage(error));
+  }
+}
+
+/** Remove um membro do grupo (só administradores). */
+export async function removeMember(conversationId, userId) {
+  try {
+    await bridge.removeMember(conversationId, userId);
+  } catch (error) {
+    throw new Error(errorMessage(error));
+  }
+}
+
+/** Sai do grupo: a conversa some da lista. */
+export async function leaveGroup(conversationId) {
+  await removeMember(conversationId, store.get().user.id);
+  removeConversation(conversationId);
 }

@@ -79,6 +79,11 @@ func (c *Cache) AckMessage(ctx context.Context, clientID string, id, sequence in
 		_, err = tx.ExecContext(ctx, `
 			UPDATE conversations SET last_sequence = MAX(last_sequence, ?), last_activity = MAX(last_activity, ?)
 			WHERE id = ?`, sequence, formatTime(createdAt), conversationID)
+		if err != nil {
+			return err
+		}
+		// Uma confirmação de entrega pode ter chegado antes do ACK.
+		_, err = refreshOwnStatuses(ctx, tx, conversationID)
 		return err
 	})
 	if err != nil || !ok {
