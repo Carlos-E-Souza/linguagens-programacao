@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { displayNameError, normalizedUsername, usernameError } from './account-validation.js';
+import { displayNameError, normalizedUsername, passwordError, usernameError } from './account-validation.js';
 
 test('nome de usuário é normalizado como no servidor', () => {
   assert.equal(normalizedUsername('  Ana_12  '), 'ana_12');
@@ -23,4 +23,14 @@ test('nome de exibição respeita o limite de 64 bytes do servidor', () => {
   assert.equal(displayNameError('á'.repeat(32)), '');
   assert.equal(displayNameError('á'.repeat(33)), 'O nome de exibição é muito longo. Use no máximo 64 bytes.');
   assert.equal(displayNameError('  '), 'Informe como você quer aparecer.');
+});
+
+test('senha exige 8 caracteres e respeita o máximo de 72 bytes do servidor', () => {
+  assert.equal(passwordError('senha123'), '');
+  assert.equal(passwordError('a'.repeat(72)), '');
+  assert.equal(passwordError('a'.repeat(73)), 'A senha deve ter no máximo 72 bytes.');
+  assert.equal(passwordError('á'.repeat(8)), '');
+  assert.equal(passwordError('á'.repeat(4)), 'A senha precisa de pelo menos 8 caracteres.');
+  assert.equal(passwordError('short'), 'A senha precisa de pelo menos 8 caracteres.');
+  assert.equal(passwordError(''), 'Informe a senha.');
 });

@@ -2,9 +2,7 @@ import { login, register } from '../actions.js';
 import { errorMessage } from '../bridge.js';
 import { h, setText, toggleClass } from '../utils/dom.js';
 import { icon } from '../utils/icons.js';
-import { displayNameError, normalizedUsername, usernameError } from '../utils/account-validation.js';
-
-const PASSWORD_MIN = 8;
+import { displayNameError, normalizedUsername, passwordError, usernameError } from '../utils/account-validation.js';
 
 const modes = {
   login: {
@@ -121,8 +119,12 @@ export function createLoginScreen(props) {
     label: 'Senha',
     type: 'password',
     autocomplete: 'current-password',
-    hint: `Pelo menos ${PASSWORD_MIN} caracteres.`,
+    hint: 'Pelo menos 8 caracteres e no máximo 72 bytes.',
   });
+  password.input.addEventListener('blur', () => {
+    if (mode === 'register') validatePassword();
+  });
+  password.input.addEventListener('input', () => password.setError(''));
 
   const title = h('h1', { class: 'login__title', id: 'login-title' });
   const subtitle = h('p', { class: 'login__subtitle' });
@@ -212,18 +214,20 @@ export function createLoginScreen(props) {
     return !error;
   }
 
+  function validatePassword() {
+    let error = '';
+    if (mode === 'register') error = passwordError(password.value());
+    else if (!password.value()) error = 'Informe a senha.';
+    password.setError(error);
+    return !error;
+  }
+
   /** Validação local; devolve o primeiro campo inválido para receber o foco. */
   function validate() {
     const invalid = [];
     if (!validateUsername()) invalid.push(username);
     if (mode === 'register' && !validateDisplayName()) invalid.push(displayName);
-    if (!password.value()) {
-      password.setError('Informe a senha.');
-      invalid.push(password);
-    } else if (mode === 'register' && password.value().length < PASSWORD_MIN) {
-      password.setError(`A senha precisa de pelo menos ${PASSWORD_MIN} caracteres.`);
-      invalid.push(password);
-    }
+    if (!validatePassword()) invalid.push(password);
     return invalid[0] ?? null;
   }
 
