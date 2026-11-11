@@ -2,9 +2,8 @@ import { login, register } from '../actions.js';
 import { errorMessage } from '../bridge.js';
 import { h, setText, toggleClass } from '../utils/dom.js';
 import { icon } from '../utils/icons.js';
+import { normalizedUsername, usernameError } from '../utils/account-validation.js';
 
-// Mesmas regras do servidor (back-end/PLANO.md, Fase 2), para avisar antes de enviar.
-const USERNAME_PATTERN = /^[a-z0-9_]{3,32}$/;
 const PASSWORD_MIN = 8;
 
 const modes = {
@@ -98,10 +97,13 @@ export function createLoginScreen(props) {
     id: 'username',
     label: 'Nome de usuário',
     autocomplete: 'username',
-    hint: '3 a 32 caracteres: letras minúsculas, números ou _.',
+    hint: '3 a 32 letras, números ou _. Letras maiúsculas são salvas em minúsculas.',
   });
   username.input.addEventListener('blur', () => {
-    if (mode === 'register') validateUsername();
+    if (mode === 'register') {
+      username.input.value = normalizedUsername(username.value());
+      validateUsername();
+    }
   });
   username.input.addEventListener('input', () => username.setError(''));
   const displayName = createField({ id: 'display-name', label: 'Nome de exibição', autocomplete: 'name' });
@@ -187,17 +189,11 @@ export function createLoginScreen(props) {
   }
 
   function validateUsername() {
-    const user = username.value().trim();
-    if (!user) {
-      username.setError('Informe o nome de usuário.');
-      return false;
-    }
-    if (mode === 'register' && !USERNAME_PATTERN.test(user)) {
-      username.setError('Use de 3 a 32 letras minúsculas, números ou _.');
-      return false;
-    }
-    username.setError('');
-    return true;
+    let error = '';
+    if (mode === 'register') error = usernameError(username.value());
+    else if (!username.value().trim()) error = 'Informe o nome de usuário.';
+    username.setError(error);
+    return !error;
   }
 
   /** Validação local; devolve o primeiro campo inválido para receber o foco. */
@@ -230,7 +226,7 @@ export function createLoginScreen(props) {
     busy = true;
     render();
     try {
-      const user = username.value().trim();
+      const user = normalizedUsername(username.value());
       if (mode === 'register') await register(user, displayName.value().trim(), password.value());
       else await login(user, password.value());
       // Sucesso: o store troca para a tela de chat e esta tela é desmontada.
