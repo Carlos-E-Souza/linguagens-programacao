@@ -40,5 +40,5 @@ Em 11/11/2026, foram abertas duas instâncias do executável com pastas `APPDATA
 ## Observação para revisão posterior
 
 `go test -race ./...` em `back-end/` falhou duas vezes em `TestUnresponsiveClientIsRemoved`
-(`internal/httputil/ws_integration_test.go`). A falha foi registrada para análise em uma branch de correções;
-ela não foi alterada nesta branch de validação do front.
+(`internal/httputil/ws_integration_test.go`) na `main` usada para esta validação. O teste foi estabilizado na
+branch separada `fix/backend-reliability`; nenhuma mudança do back-end faz parte desta branch do front.
