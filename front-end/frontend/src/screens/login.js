@@ -2,7 +2,7 @@ import { login, register } from '../actions.js';
 import { errorMessage } from '../bridge.js';
 import { h, setText, toggleClass } from '../utils/dom.js';
 import { icon } from '../utils/icons.js';
-import { normalizedUsername, usernameError } from '../utils/account-validation.js';
+import { displayNameError, normalizedUsername, usernameError } from '../utils/account-validation.js';
 
 const PASSWORD_MIN = 8;
 
@@ -106,7 +106,16 @@ export function createLoginScreen(props) {
     }
   });
   username.input.addEventListener('input', () => username.setError(''));
-  const displayName = createField({ id: 'display-name', label: 'Nome de exibição', autocomplete: 'name' });
+  const displayName = createField({
+    id: 'display-name',
+    label: 'Nome de exibição',
+    autocomplete: 'name',
+    hint: 'Até 64 bytes; acentos podem ocupar mais de um byte.',
+  });
+  displayName.input.addEventListener('blur', () => {
+    if (mode === 'register') validateDisplayName();
+  });
+  displayName.input.addEventListener('input', () => displayName.setError(''));
   const password = createField({
     id: 'password',
     label: 'Senha',
@@ -159,6 +168,7 @@ export function createLoginScreen(props) {
     setText(switchText, copy.switchText);
     setText(switchButton, copy.switchAction);
     displayName.el.hidden = !registering;
+    displayName.el.querySelector('.field__hint').hidden = !registering;
     username.el.querySelector('.field__hint').hidden = !registering;
     password.el.querySelector('.field__hint').hidden = !registering;
     password.input.autocomplete = registering ? 'new-password' : 'current-password';
@@ -196,14 +206,17 @@ export function createLoginScreen(props) {
     return !error;
   }
 
+  function validateDisplayName() {
+    const error = displayNameError(displayName.value());
+    displayName.setError(error);
+    return !error;
+  }
+
   /** Validação local; devolve o primeiro campo inválido para receber o foco. */
   function validate() {
     const invalid = [];
     if (!validateUsername()) invalid.push(username);
-    if (mode === 'register' && !displayName.value().trim()) {
-      displayName.setError('Informe como você quer aparecer.');
-      invalid.push(displayName);
-    }
+    if (mode === 'register' && !validateDisplayName()) invalid.push(displayName);
     if (!password.value()) {
       password.setError('Informe a senha.');
       invalid.push(password);
