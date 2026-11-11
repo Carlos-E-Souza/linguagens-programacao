@@ -9,6 +9,7 @@ import { mergeMessage, mergeMessages, sortConversations } from './utils/conversa
 // Intervalo mínimo para repetir MarkAsRead da mesma posição quando o servidor ainda indica não lidas.
 const MARK_READ_RETRY_MS = 2000;
 const pendingConversationLoads = new Set();
+let chatGeneration = 0;
 
 function rememberConversationChange(change) {
   for (const changes of pendingConversationLoads) changes.push(change);
@@ -61,27 +62,32 @@ export async function logout() {
 }
 
 function resetToLogin(notice) {
+  chatGeneration += 1;
   lastMarked.clear();
   store.set({ ...initialState, screen: 'login', notice });
 }
 
 async function enterChat(user) {
-  store.set({ screen: 'chat', user, notice: '', connection: await bridge.connectionState() });
+  const generation = ++chatGeneration;
+  const connection = await bridge.connectionState();
+  if (generation !== chatGeneration) return;
+  store.set({ screen: 'chat', user, notice: '', connection });
   await loadConversations();
 }
 
 export async function loadConversations() {
   const userId = store.get().user?.id;
+  const generation = chatGeneration;
   const changes = [];
   pendingConversationLoads.add(changes);
   try {
     const conversations = await bridge.listConversations();
-    if (store.get().user?.id !== userId) return;
+    if (generation !== chatGeneration || store.get().user?.id !== userId) return;
     const latest = changes.reduce(applyConversationChange, conversations);
     store.set({ conversations: sortConversations(latest), conversationsLoaded: true });
   } catch (error) {
     console.error(error);
-    if (store.get().user?.id === userId) store.set({ conversationsLoaded: true });
+    if (generation === chatGeneration && store.get().user?.id === userId) store.set({ conversationsLoaded: true });
   } finally {
     pendingConversationLoads.delete(changes);
   }
