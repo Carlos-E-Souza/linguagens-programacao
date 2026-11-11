@@ -15,7 +15,7 @@ Registro de 11/11/2026, no Windows, com o código do commit `02d2799` da `main`.
 
 - Conferir login e cadastro nas janelas. As duas contas usadas neste teste já tinham sessões locais salvas;
   por isso, abriram diretamente na lista de conversas.
-- Conferir recebimento após fechar e reabrir uma das janelas, e gerenciar membros com uma terceira conta.
+- Conferir recebimento após fechar e reabrir uma das janelas, e remoção de membro do grupo.
   A fase 10 permanece aberta até completar o roteiro manual do `README.md`.
 
 ## Teste visual com duas janelas
@@ -30,6 +30,8 @@ Em 11/11/2026, foram abertas duas instâncias do executável com pastas `APPDATA
   Os detalhes mostraram o administrador e as ações diferentes para administrador e membro.
 - Ao parar o servidor, apareceu o aviso de falta de conexão. Uma mensagem enviada nesse intervalo ficou como
   enviando; após reiniciar o servidor, foi entregue e apareceu uma única vez na outra janela.
+- Uma terceira conta de teste foi adicionada pelos detalhes do grupo. O total passou para três membros nas duas
+  janelas e a conta apareceu como offline. Não foi executada a remoção do membro.
 - Observação para investigação: antes da reinicialização, `codexb1111` mostrou `codexa1111` como offline embora
   a janela dele estivesse aberta. Após reconectar, passou a mostrar online. Ainda não foi isolada a causa.
 
