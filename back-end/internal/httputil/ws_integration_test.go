@@ -180,18 +180,22 @@ func TestWebSocketTwoClientsSeePresence(t *testing.T) {
 // coder/websocket only answers a ping while the connection is being read,
 // so a client that never calls Read is exactly a peer that went silent.
 func TestUnresponsiveClientIsRemoved(t *testing.T) {
-	f := newRealtimeFixture(t, 50*time.Millisecond, 100*time.Millisecond)
+	f := newRealtimeFixture(t, 100*time.Millisecond, 500*time.Millisecond)
 	alice, bob, aliceToken, bobToken := f.seedPair()
-
-	silent := f.dial(aliceToken) // never read: will not answer pings
-	defer silent.CloseNow()
-	f.waitOnline(alice.ID, true, time.Second)
 
 	bobConn := f.dial(bobToken)
 	defer bobConn.CloseNow()
 	f.waitOnline(bob.ID, true, time.Second)
 
-	// Bob reads, so his own pings are answered and he stays connected.
+	// Bob starts reading before Alice connects, so his pings are answered
+	// while we wait for the silent client to time out.
+	silent := f.dial(aliceToken) // never read: will not answer pings
+	defer silent.CloseNow()
+	f.waitOnline(alice.ID, true, time.Second)
+	if p := readPresence(t, bobConn, alice.ID, 2*time.Second); !p.Online {
+		t.Error("expected an online presence when the silent client connects")
+	}
+
 	if p := readPresence(t, bobConn, alice.ID, 2*time.Second); p.Online {
 		t.Error("expected an offline presence for the silent client")
 	}
