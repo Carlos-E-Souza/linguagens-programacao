@@ -13,9 +13,25 @@ Registro de 11/11/2026, no Windows, com o código do commit `02d2799` da `main`.
 
 ## Pendente
 
-- Executar o roteiro com duas janelas de verdade, descrito em `README.md`.
-  O teste automático não verifica renderização, foco, interação por mouse/teclado e comportamento visual ao
-  desconectar. A fase 10 permanece aberta até esse roteiro ser observado.
+- Conferir login e cadastro nas janelas. As duas contas usadas neste teste já tinham sessões locais salvas;
+  por isso, abriram diretamente na lista de conversas.
+- Conferir recebimento após fechar e reabrir uma das janelas, e gerenciar membros com uma terceira conta.
+  A fase 10 permanece aberta até completar o roteiro manual do `README.md`.
+
+## Teste visual com duas janelas
+
+Em 11/11/2026, foram abertas duas instâncias do executável com pastas `APPDATA` separadas, contas
+`codexa1111` e `codexb1111`, e um servidor local de teste:
+
+- A busca encontrou a outra conta, a conversa individual foi criada e apareceu nas duas janelas.
+- Uma mensagem recebida mostrou contador de não lidas; ao abrir a conversa, o status no remetente passou de
+  entregue para lida.
+- Um grupo de duas pessoas apareceu nas duas janelas. Mensagem, contador de não lidas e status lida funcionaram.
+  Os detalhes mostraram o administrador e as ações diferentes para administrador e membro.
+- Ao parar o servidor, apareceu o aviso de falta de conexão. Uma mensagem enviada nesse intervalo ficou como
+  enviando; após reiniciar o servidor, foi entregue e apareceu uma única vez na outra janela.
+- Observação para investigação: antes da reinicialização, `codexb1111` mostrou `codexa1111` como offline embora
+  a janela dele estivesse aberta. Após reconectar, passou a mostrar online. Ainda não foi isolada a causa.
 
 ## Observação para revisão posterior
 
