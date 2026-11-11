@@ -1,6 +1,8 @@
 # Validação da fase 10
 
 Registro de 11/11/2026, no Windows, com o código do commit `02d2799` da `main`.
+Na branch `test/frontend-phase-10`, `npm run build`, `go test -race ./...` e `wails build` foram repetidos
+com sucesso após `npm ci` na nova worktree. O teste E2E abaixo foi executado na `main`, cujo código do app é o mesmo.
 
 ## Verificações concluídas
 
