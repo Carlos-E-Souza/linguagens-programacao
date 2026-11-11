@@ -110,7 +110,7 @@ func (a *App) Register(username, displayName, password string) (api.User, error)
 	if err != nil {
 		return api.User{}, friendly(err, map[int]string{
 			http.StatusConflict:   "Esse nome de usuário já está em uso. Escolha outro.",
-			http.StatusBadRequest: "Confira os dados: nome de usuário com 3 a 32 letras minúsculas, números ou _, e senha com pelo menos 8 caracteres.",
+			http.StatusBadRequest: "Confira o nome de usuário, o nome de exibição (até 64 bytes) e a senha (8 caracteres ou mais, até 72 bytes).",
 		})
 	}
 	return user, nil
