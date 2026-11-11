@@ -178,8 +178,10 @@ func (a *App) handleConversationUpdated(s *session, data json.RawMessage) {
 		return
 	}
 	a.emitConversation(s, conv.ID)
-	if !existed && conv.LastSequence > 0 {
-		// Entrou num grupo que já tinha mensagens: a lista do servidor traz as não lidas e a última mensagem.
+	if !existed {
+		// A lista REST traz a presença atual dos membros, inclusive quando a
+		// conversa ainda não tem mensagens. O evento não inclui essa presença.
+		// Ela também traz as não lidas e a última mensagem de grupos antigos.
 		a.refreshConversation(s)
 	}
 }
