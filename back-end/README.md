@@ -70,7 +70,6 @@ As configurações são lidas de variáveis de ambiente. O arquivo `.env.example
 | `CLIENT_QUEUE_SIZE`      | `256`       | Buffer do canal de saída por conexão            |
 | `PERSISTENCE_QUEUE_SIZE` | `4096`      | Buffer da fila de persistência                  |
 | `MESSAGE_LIMIT_CHARS`    | `4000`      | Tamanho máximo do corpo de uma mensagem         |
-| `TYPING_COOLDOWN`        | `2s`        | Intervalo mínimo entre eventos de digitação     |
 | `PPROF_ADDRESS`          | —           | Endereço do servidor de debug (só com `DEV_MODE`) |
 
 As durações (`PING_INTERVAL`, `PONG_TIMEOUT`, `TOKEN_EXPIRY`) exigem unidade explícita: `30s`, `24h`. Um valor como

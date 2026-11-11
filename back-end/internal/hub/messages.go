@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/db"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
@@ -25,8 +27,6 @@ func (h *Hub) handleIncoming(ctx context.Context, in inbound) {
 		h.handleReceipt(ctx, in, models.StatusDelivered)
 	case ws.TypeMessageRead:
 		h.handleReceipt(ctx, in, models.StatusRead)
-	case ws.TypeTyping:
-		h.handleTyping(in)
 	case ws.TypeSync:
 		h.handleSync(ctx, in)
 	default:
@@ -115,41 +115,33 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 		ConversationID: payload.ConversationID,
 		CreatedAt:      now.Format(time.RFC3339Nano),
 	}
-	h.rememberAck(key, ack)
 
-	// The real message ID is assigned by the database, so the hub hands
-	// the message to the persistence pool and waits a bounded moment for
-	// the stored row. Waiting here rather than on the hub loop is what
-	// keeps the acknowledgement truthful without stalling routing: the
-	// delivery below happens first, and the ACK is produced by a
-	// goroutine that only watches this one message.
-	stored := make(chan models.Message, 1)
-
+	// The real message ID is assigned by the database, so the message goes
+	// to the persistence pool and a goroutine waits for the stored row.
+	// Until the pool answers, the message is kept in unsaved so that a
+	// sync arriving in that window still finds it.
+	var result <-chan models.Message
 	if h.persister != nil {
-		result, err := h.persister.Enqueue(ctx, msg)
+		var err error
+		result, err = h.persister.Enqueue(ctx, msg)
 		if err != nil {
+			// The message was not accepted, so nothing about it may remain:
+			// a cached ACK would answer the client's retry as if it had been
+			// stored, and a consumed sequence would leave a permanent hole
+			// that clients filling gaps would never see closed. Run is the
+			// only writer and nothing ran since nextSequence, so giving the
+			// number back is safe.
 			slog.Error("enqueue failed", "conversation_id", msg.ConversationID, "error", err)
+			h.seqs[payload.ConversationID] = sequence - 1
 			h.sendError(in.client, "internal_error", "could not persist the message", payload.ClientID)
 			return
 		}
-
-		go func() {
-			select {
-			case row, ok := <-result:
-				if ok && row.ID != 0 {
-					stored <- row
-					return
-				}
-			case <-time.After(ackWaitTimeout):
-				slog.Warn("ack sent before the message was stored",
-					"conversation_id", msg.ConversationID, "client_id", payload.ClientID)
-			}
-
-			stored <- models.Message{}
-		}()
-	} else {
-		stored <- models.Message{}
+		h.rememberUnsaved(msg)
 	}
+
+	// Only now the message is really accepted: a resend of the same
+	// client_id gets this answer instead of a second copy.
+	h.rememberAck(key, ack)
 
 	// Deliver to every member, including the sender's other connections,
 	// so a second window of the same user stays in sync.
@@ -162,49 +154,102 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 		h.deliverToUser(userID, newFrame)
 	}
 
-	// previous is the acknowledgement as it can be answered right now:
-	// the sequence is known, the database ID is not.
-	previous := ack
+	if result == nil {
+		// No persistence (tests): answer right away, without an ID.
+		h.sendAck(in.client, ack)
+		return
+	}
 
 	// One goroutine per message owns the acknowledgement, so the hub loop
-	// never waits on disk.
-	//
-	// It must not touch hub state: the ack cache is owned by the loop, and
-	// writing to it from here would race with the next message. The
-	// preliminary entry is therefore already in the cache (recorded above
-	// with the sequence, before any waiting), and the goroutine only
-	// enriches the reply it sends — never the shared map. A resend that
-	// arrives before the ID is known still gets the same sequence, which
-	// is what deduplication depends on.
-	go func() {
-		row := <-stored
+	// never waits on disk. It must not touch hub state; everything it
+	// learns goes back to the loop through h.persisted.
+	go h.awaitPersisted(in.client, key, ack, msg, result)
+}
 
-		final := previous
-		if row.ID != 0 {
-			final.ID = row.ID
-			final.CreatedAt = row.CreatedAt.Format(time.RFC3339Nano)
-		}
+// awaitPersisted sends the acknowledgement once the pool has stored the
+// message, or after ackWaitTimeout without an ID, and then reports the
+// outcome to the loop.
+//
+// It always waits for the pool's answer, even after a timed-out ACK went
+// out, because the loop must learn when the message left the queue to
+// drop it from unsaved. The pool answers every message, also on failure
+// and during shutdown, so the wait ends.
+func (h *Hub) awaitPersisted(client *Client, key ackKey, ack ws.AckPayload, msg models.Message, result <-chan models.Message) {
+	timer := time.NewTimer(ackWaitTimeout)
+	defer timer.Stop()
 
-		// The cache is owned by the hub loop, so the enrichment is handed
-		// back to it rather than written here. Until the loop processes
-		// this, a resend still gets the same sequence, which is the part
-		// deduplication actually relies on; the ID follows moments later.
-		select {
-		case h.stored <- storedAck{key: key, ack: final}:
-		default:
-			// The loop is saturated. The reply below is still correct,
-			// and only the cached copy keeps the earlier ID — a rare
-			// case that costs nothing but a slightly staler cache entry.
-			slog.Warn("ack cache update dropped", "client_id", final.ClientID)
-		}
+	var row models.Message
+	acked := false
 
-		ackFrame, err := encodeFrame(mustEnvelope(ws.TypeMessageAck, final))
-		if err != nil {
-			slog.Error("encode message.ack failed", "error", err)
-			return
+	select {
+	case row = <-result:
+	case <-timer.C:
+		slog.Warn("ack sent before the message was stored",
+			"conversation_id", msg.ConversationID, "client_id", key.clientID)
+		h.sendAck(client, ack)
+		acked = true
+		row = <-result
+	}
+
+	final := ack
+	stored := row.ID != 0
+	if stored {
+		final.ID = row.ID
+		final.CreatedAt = row.CreatedAt.Format(time.RFC3339Nano)
+	}
+
+	if !acked {
+		h.sendAck(client, final)
+	}
+
+	select {
+	case h.persisted <- persistedMsg{
+		key:            key,
+		ack:            final,
+		stored:         stored,
+		conversationID: msg.ConversationID,
+		sequence:       msg.Sequence,
+	}:
+	case <-h.done:
+		// The hub stopped; there is no state left to update.
+	}
+}
+
+// sendAck queues a message.ack frame for one connection.
+func (h *Hub) sendAck(client *Client, ack ws.AckPayload) {
+	frame, err := encodeFrame(mustEnvelope(ws.TypeMessageAck, ack))
+	if err != nil {
+		slog.Error("encode message.ack failed", "error", err)
+		return
+	}
+	client.trySend(frame)
+}
+
+// rememberUnsaved records a message the database has not confirmed yet.
+// Run is the only caller.
+func (h *Hub) rememberUnsaved(msg models.Message) {
+	byConv := h.unsaved[msg.ConversationID]
+	if byConv == nil {
+		byConv = make(map[int64]models.Message)
+		h.unsaved[msg.ConversationID] = byConv
+	}
+	byConv[msg.Sequence] = msg
+}
+
+// handlePersisted runs on the loop when the pool has answered for one
+// message: the message leaves unsaved, and the dedup cache learns the
+// database ID when there is one.
+func (h *Hub) handlePersisted(pm persistedMsg) {
+	if byConv := h.unsaved[pm.conversationID]; byConv != nil {
+		delete(byConv, pm.sequence)
+		if len(byConv) == 0 {
+			delete(h.unsaved, pm.conversationID)
 		}
-		in.client.trySend(ackFrame)
-	}()
+	}
+
+	if pm.stored {
+		h.rememberAck(pm.key, pm.ack)
+	}
 }
 
 // ackWaitTimeout bounds how long the acknowledgement waits for the
@@ -239,10 +284,18 @@ func (h *Hub) nextSequence(ctx context.Context, conversationID int64) (int64, er
 }
 
 // handleReceipt processes a delivered or read confirmation.
+//
+// The status goes out to the other members right away. The watermark write
+// is handed to the receipt writer, which batches it with the other
+// confirmations of the next few milliseconds.
 func (h *Hub) handleReceipt(ctx context.Context, in inbound, status string) {
 	var payload ws.ReadReceiptPayload
 	if err := json.Unmarshal(in.env.Data, &payload); err != nil {
 		h.sendError(in.client, "invalid_payload", "malformed receipt payload", "")
+		return
+	}
+	if payload.UpToSequence <= 0 {
+		h.sendError(in.client, "invalid_sequence", "up_to_sequence must be a positive integer", "")
 		return
 	}
 
@@ -258,9 +311,7 @@ func (h *Hub) handleReceipt(ctx context.Context, in inbound, status string) {
 		return
 	}
 
-	// The watermark update is a database write, so it happens off the hub
-	// loop and the broadcast follows it.
-	go h.persistAndBroadcastReceipt(payload.ConversationID, userID, payload.UpToSequence, status)
+	h.queueReceipt(payload.ConversationID, userID, payload.UpToSequence, status)
 
 	statusFrame, err := encodeFrame(mustEnvelope(ws.TypeMessageStatus, ws.StatusPayload{
 		ConversationID: payload.ConversationID,
@@ -281,94 +332,86 @@ func (h *Hub) handleReceipt(ctx context.Context, in inbound, status string) {
 	}
 }
 
-// persistAndBroadcastReceipt writes the watermark and tells the sender.
-func (h *Hub) persistAndBroadcastReceipt(conversationID, userID, upToSequence int64, status string) {
+// queueReceipt hands a confirmation to the receipt writer without
+// blocking the loop.
+//
+// When the queue is full the write is skipped and logged. That loses
+// nothing for good: watermarks are cumulative, so the member's next
+// confirmation carries this one with it.
+func (h *Hub) queueReceipt(conversationID, userID, upTo int64, status string) {
 	if h.store == nil {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var err error
+	r := db.Receipt{ConversationID: conversationID, UserID: userID}
 	if status == models.StatusRead {
-		err = h.store.MarkRead(ctx, conversationID, userID, upToSequence)
+		r.Read = upTo
 	} else {
-		err = h.store.MarkDelivered(ctx, conversationID, userID, upToSequence)
-	}
-	if err != nil {
-		slog.Error("persist receipt failed",
-			"conversation_id", conversationID, "user_id", userID, "status", status, "error", err)
-		return
+		r.Delivered = upTo
 	}
 
-	h.mu.RLock()
-	members := make([]int64, 0, len(h.members[conversationID]))
-	for memberID := range h.members[conversationID] {
-		members = append(members, memberID)
-	}
-	h.mu.RUnlock()
-
-	frame, err := encodeFrame(mustEnvelope(ws.TypeMessageStatus, ws.StatusPayload{
-		ConversationID: conversationID,
-		UserID:         userID,
-		UpToSequence:   upToSequence,
-		Status:         status,
-	}))
-	if err != nil {
-		return
-	}
-
-	for _, memberID := range members {
-		if memberID == userID {
-			continue
-		}
-		h.deliverToUser(memberID, frame)
+	select {
+	case h.receipts <- r:
+	default:
+		slog.Warn("receipt queue full, skipping write",
+			"conversation_id", conversationID, "user_id", userID, "status", status)
 	}
 }
 
-// handleTyping forwards a typing indicator to the other members.
-//
-// Nothing is persisted: typing is transient, and storing it would create
-// write traffic proportional to keystrokes.
-func (h *Hub) handleTyping(in inbound) {
-	var payload ws.TypingPayload
-	if err := json.Unmarshal(in.env.Data, &payload); err != nil {
-		h.sendError(in.client, "invalid_payload", "malformed typing payload", "")
-		return
-	}
+// runReceiptWriter folds confirmations into one entry per (conversation,
+// member), keeping the highest delivered and read sequences, and writes
+// them in one transaction every receiptFlushEvery or when maxReceiptBatch
+// members are pending. It returns after the queue is closed and flushed.
+func (h *Hub) runReceiptWriter() {
+	defer h.wg.Done()
 
-	if !in.client.allowTyping(h.cfg.TypingCooldown) {
-		return
-	}
+	type memberKey struct{ conversationID, userID int64 }
+	pending := make(map[memberKey]db.Receipt)
 
-	userID := in.client.UserID()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	members, err := h.conversationMembers(ctx, payload.ConversationID)
-	if err != nil {
-		return
-	}
-	if _, isMember := members[userID]; !isMember {
-		return
-	}
-
-	frame, err := encodeFrame(mustEnvelope(ws.TypeTyping, ws.TypingEvent{
-		ConversationID: payload.ConversationID,
-		UserID:         userID,
-		Active:         payload.Active,
-	}))
-	if err != nil {
-		return
-	}
-
-	for memberID := range members {
-		if memberID == userID {
-			continue
+	flush := func() {
+		if len(pending) == 0 {
+			return
 		}
-		h.deliverToUser(memberID, frame)
+
+		batch := make([]db.Receipt, 0, len(pending))
+		for _, r := range pending {
+			batch = append(batch, r)
+		}
+		clear(pending)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := h.store.ApplyReceipts(ctx, batch); err != nil {
+			slog.Error("persist receipts failed", "count", len(batch), "error", err)
+		}
+	}
+
+	ticker := time.NewTicker(receiptFlushEvery)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case r, ok := <-h.receipts:
+			if !ok {
+				flush()
+				return
+			}
+
+			key := memberKey{r.ConversationID, r.UserID}
+			current := pending[key]
+			current.ConversationID, current.UserID = r.ConversationID, r.UserID
+			current.Delivered = max(current.Delivered, r.Delivered)
+			current.Read = max(current.Read, r.Read)
+			pending[key] = current
+
+			if len(pending) >= maxReceiptBatch {
+				flush()
+			}
+
+		case <-ticker.C:
+			flush()
+		}
 	}
 }
 
@@ -387,6 +430,18 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 
 	userID := in.client.UserID()
 	client := in.client
+
+	// Snapshot the messages the database has not confirmed yet. Taken here,
+	// on the loop, before the query below: a message that is written
+	// after the snapshot is in it, and one written before is in the
+	// database, so the merge cannot miss either. Messages accepted after
+	// the snapshot reach this connection live, since it is registered.
+	unsaved := make(map[int64][]models.Message, len(h.unsaved))
+	for convID, byConv := range h.unsaved {
+		for _, msg := range byConv {
+			unsaved[convID] = append(unsaved[convID], msg)
+		}
+	}
 
 	// Building the backfill reads the database, so it runs off the hub
 	// loop; the frames are queued through the same buffered channel.
@@ -415,11 +470,13 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 		for _, conv := range conversations {
 			from := known[conv.ID]
 
-			messages, err := h.store.ListMessagesAfter(syncCtx, conv.ID, from, maxSyncMessagesPerConversation)
+			stored, err := h.store.ListMessagesAfter(syncCtx, conv.ID, from, maxSyncMessagesPerConversation)
 			if err != nil {
 				slog.Error("sync: list messages failed", "conversation_id", conv.ID, "error", err)
 				continue
 			}
+
+			messages := mergeBackfill(stored, unsaved[conv.ID], from, maxSyncMessagesPerConversation)
 
 			for _, msg := range messages {
 				frame, err := encodeFrame(mustEnvelope(ws.TypeMessageNew, msg))
@@ -448,6 +505,38 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 			slog.Warn("sync: could not queue sync.end", "user_id", userID)
 		}
 	}()
+}
+
+// mergeBackfill combines the stored messages after a sequence with the
+// unconfirmed ones, dropping duplicates (a message can be in both when it
+// was written between the snapshot and the query), in ascending sequence
+// order and capped at limit.
+func mergeBackfill(stored, unsaved []models.Message, after int64, limit int) []models.Message {
+	if len(unsaved) == 0 {
+		return stored
+	}
+
+	bySequence := make(map[int64]models.Message, len(stored)+len(unsaved))
+	for _, msg := range unsaved {
+		if msg.Sequence > after {
+			bySequence[msg.Sequence] = msg
+		}
+	}
+	// Stored rows win: they carry the database ID.
+	for _, msg := range stored {
+		bySequence[msg.Sequence] = msg
+	}
+
+	merged := make([]models.Message, 0, len(bySequence))
+	for _, msg := range bySequence {
+		merged = append(merged, msg)
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Sequence < merged[j].Sequence })
+
+	if len(merged) > limit {
+		merged = merged[:limit]
+	}
+	return merged
 }
 
 // sendError reports a rejected request to the client that made it.

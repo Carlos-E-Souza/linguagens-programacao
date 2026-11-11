@@ -72,7 +72,6 @@ func newHubFixture(t *testing.T) *hubFixture {
 	cfg := config.Config{
 		ClientQueueSize:   64,
 		MessageLimitChars: 4000,
-		TypingCooldown:    0,
 	}
 
 	store := db.NewStore(handle)
@@ -562,39 +561,6 @@ func TestPresenceBroadcastOnConnect(t *testing.T) {
 	}
 
 	_ = aliceClient
-}
-
-// TestTypingIsForwardedToOtherMembersOnly covers the fan-out rule.
-func TestTypingIsForwardedToOtherMembersOnly(t *testing.T) {
-	f := newHubFixture(t)
-	alice, bob, conv := f.createUsers(t)
-
-	aliceClient := f.addClient(alice.ID)
-	bobClient := f.addClient(bob.ID)
-
-	f.submit(aliceClient, mustEnvelope(ws.TypeTyping, ws.TypingPayload{
-		ConversationID: conv.ID, Active: true,
-	}))
-
-	frame := waitForType(t, bobClient, ws.TypeTyping, 2*time.Second)
-
-	var typing ws.TypingEvent
-	if err := json.Unmarshal(mustData(t, frame), &typing); err != nil {
-		t.Fatalf("decode typing: %v", err)
-	}
-	if got, want := typing.UserID, alice.ID; got != want {
-		t.Errorf("typing user: got %d, want %d", got, want)
-	}
-	if !typing.Active {
-		t.Error("expected active: true")
-	}
-
-	// Alice must not receive her own typing event.
-	for _, frame := range aliceClient.drain(300 * time.Millisecond) {
-		if decodeType(t, frame) == ws.TypeTyping {
-			t.Error("sender received their own typing event")
-		}
-	}
 }
 
 // TestIsOnlineTracksConnections covers the presence query used by the

@@ -44,22 +44,33 @@ type Hub struct {
 	store     *db.Store
 	persister Persister
 
-	// Guarded by mu; read from other goroutines.
+	// clients is guarded by mu because HTTP handlers and background
+	// goroutines read it. The maps below it are owned by the Run loop
+	// alone and must never be touched from another goroutine.
 	mu      sync.RWMutex
 	clients map[int64]map[*Client]struct{}
 	members map[int64]map[int64]struct{} // conversation_id -> set of user_id
-	pending map[int64]map[int64]struct{} // conversation_id -> user_id not yet written to DB
 	acks    map[ackKey]ws.AckPayload     // (sender_id, client_id) -> previous ack
 	seqs    map[int64]int64              // conversation_id -> last assigned sequence
+
+	// unsaved holds the messages handed to the persistence pool that the
+	// database has not confirmed yet (conversation_id -> sequence ->
+	// message). A sync merges it with the database query, so a message
+	// accepted moments before a reconnect is not missing from the backfill.
+	unsaved map[int64]map[int64]models.Message
 
 	// Channels into the Run loop. Only Run reads them.
 	register   chan *Client
 	unregister chan *Client
 
-	// stored reports a message whose database ID has become known. It lets
-	// the loop enrich the dedup cache without the acknowledgement
-	// goroutine touching hub state.
-	stored chan storedAck
+	// persisted reports that the pool finished with a message (stored or
+	// not). It lets the loop enrich the dedup cache and drop the message
+	// from unsaved without the waiting goroutine touching hub state.
+	persisted chan persistedMsg
+
+	// receipts feeds the goroutine that writes delivered/read watermarks
+	// in batches. Only the loop sends on it, and shutdown closes it.
+	receipts chan db.Receipt
 
 	// drop is a buffered queue of connections the hub itself decided to
 	// disconnect (slow clients). It is separate from unregister so the
@@ -77,10 +88,15 @@ type Hub struct {
 	wg sync.WaitGroup
 }
 
-// storedAck carries a finalised acknowledgement back to the loop.
-type storedAck struct {
-	key ackKey
-	ack ws.AckPayload
+// persistedMsg tells the loop the pool has answered for one message.
+// stored is false when the row was not written (a duplicate or a failed
+// write); ack then carries no database ID.
+type persistedMsg struct {
+	key            ackKey
+	ack            ws.AckPayload
+	stored         bool
+	conversationID int64
+	sequence       int64
 }
 
 // ackKey identifies a client-supplied message ID within a sender.
@@ -104,15 +120,16 @@ const (
 	// NotifyConversationUpdated tells the members of a conversation that
 	// its membership changed.
 	NotifyConversationUpdated NotificationType = "conversation_updated"
-	// NotifyMembersAdded tells specific users they were added to a group.
-	NotifyMembersAdded NotificationType = "members_added"
 )
 
 // Notification is an event raised outside the WebSocket path.
 type Notification struct {
 	Type           NotificationType
 	ConversationID int64
-	UserIDs        []int64
+	// UserIDs are extra recipients who are no longer members, such as a
+	// user who was just removed: they still need the update to learn
+	// that the conversation is gone for them.
+	UserIDs []int64
 }
 
 // shutdownGrace is how long the hub waits for the shutdown notice to
@@ -124,6 +141,21 @@ const shutdownGrace = 100 * time.Millisecond
 // matter; the database unique index remains the real guarantee.
 const maxAckCacheEntries = 4096
 
+// Receipt batching: the writer folds confirmations for up to
+// receiptFlushEvery, or until maxReceiptBatch members are pending, into
+// one transaction.
+const (
+	receiptFlushEvery = 100 * time.Millisecond
+	maxReceiptBatch   = 256
+	receiptQueueSize  = 4096
+)
+
+// Close codes and reasons sent when the hub itself ends a connection.
+const (
+	closeSlowReason     = "client too slow"
+	closeShutdownReason = "server shutting down"
+)
+
 // New builds a hub. The persister may be nil, in which case messages are
 // delivered but not stored (useful in tests).
 func New(cfg config.Config, store *db.Store, persister Persister) *Hub {
@@ -133,12 +165,13 @@ func New(cfg config.Config, store *db.Store, persister Persister) *Hub {
 		persister:  persister,
 		clients:    make(map[int64]map[*Client]struct{}),
 		members:    make(map[int64]map[int64]struct{}),
-		pending:    make(map[int64]map[int64]struct{}),
 		acks:       make(map[ackKey]ws.AckPayload),
 		seqs:       make(map[int64]int64),
+		unsaved:    make(map[int64]map[int64]models.Message),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
-		stored:     make(chan storedAck, 256),
+		persisted:  make(chan persistedMsg, 256),
+		receipts:   make(chan db.Receipt, receiptQueueSize),
 		drop:       make(chan *Client, 64),
 		incoming:   make(chan inbound, 256),
 		notify:     make(chan Notification, 128),
@@ -153,6 +186,11 @@ func New(cfg config.Config, store *db.Store, persister Persister) *Hub {
 // through this single select.
 func (h *Hub) Run(ctx context.Context) {
 	slog.Info("hub started")
+
+	if h.store != nil {
+		h.wg.Add(1)
+		go h.runReceiptWriter()
+	}
 
 	for {
 		select {
@@ -170,8 +208,8 @@ func (h *Hub) Run(ctx context.Context) {
 		case client := <-h.drop:
 			h.handleUnregister(client)
 
-		case sa := <-h.stored:
-			h.rememberAck(sa.key, sa.ack)
+		case pm := <-h.persisted:
+			h.handlePersisted(pm)
 
 		case in := <-h.incoming:
 			h.handleIncoming(ctx, in)
@@ -210,8 +248,12 @@ func (h *Hub) shutdown() {
 	}
 
 	for _, c := range clients {
-		c.close()
+		c.closeWith(websocket.StatusGoingAway, closeShutdownReason)
 	}
+
+	// The loop is the only sender on receipts, and it has stopped, so the
+	// channel can be closed: the writer flushes what it holds and returns.
+	close(h.receipts)
 
 	h.wg.Wait()
 	slog.Info("hub stopped", "clients_notified", len(clients))
@@ -375,16 +417,17 @@ func (h *Hub) handleNotification(n Notification) {
 		// The member cache must be dropped so the next message uses the
 		// current membership rather than a stale snapshot.
 		delete(h.members, n.ConversationID)
-		h.broadcastConversationUpdated(ctx, n.ConversationID)
-
-	case NotifyMembersAdded:
-		delete(h.members, n.ConversationID)
+		h.broadcastConversationUpdated(ctx, n.ConversationID, n.UserIDs)
 	}
 }
 
 // broadcastConversationUpdated reloads a conversation and sends it to its
-// members so their client can refresh the member list.
-func (h *Hub) broadcastConversationUpdated(ctx context.Context, conversationID int64) {
+// members, plus any extra recipients, so their client can refresh it.
+//
+// An extra recipient is a user who is no longer a member: the update they
+// receive lists the members without them, which is how their client learns
+// it was removed.
+func (h *Hub) broadcastConversationUpdated(ctx context.Context, conversationID int64, extra []int64) {
 	conv, err := h.store.GetConversation(ctx, conversationID)
 	if err != nil {
 		slog.Error("conversation update: load failed", "conversation_id", conversationID, "error", err)
@@ -405,8 +448,15 @@ func (h *Hub) broadcastConversationUpdated(ctx context.Context, conversationID i
 		return
 	}
 
+	recipients := make(map[int64]struct{}, len(members)+len(extra))
 	for _, member := range members {
-		h.deliverToUser(member.UserID, frame)
+		recipients[member.UserID] = struct{}{}
+	}
+	for _, userID := range extra {
+		recipients[userID] = struct{}{}
+	}
+	for userID := range recipients {
+		h.deliverToUser(userID, frame)
 	}
 }
 
@@ -446,7 +496,7 @@ func (h *Hub) deliverToUser(userID int64, frame []byte) {
 		// on a background goroutine for others, so touching the map
 		// directly would race. Closing first unblocks the write
 		// goroutine, which then triggers the normal unregister path.
-		c.close()
+		c.closeWith(websocket.StatusPolicyViolation, closeSlowReason)
 		h.dropClient(c)
 	}
 }

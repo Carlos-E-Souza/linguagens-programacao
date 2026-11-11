@@ -265,7 +265,9 @@ func (s *Server) handleAddMembers(w http.ResponseWriter, r *http.Request) {
 // handleRemoveMember answers DELETE /api/conversations/{id}/members/{userId}.
 //
 // A user may always remove themselves; removing somebody else requires
-// the admin role.
+// the admin role. Only groups have removable members: leaving a direct
+// conversation would orphan it, and the next POST /api/conversations for
+// the same pair would create a second one.
 func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.currentUser(w, r)
 	if !ok {
@@ -280,6 +282,11 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	conv, ok := s.requireMembership(w, r, userID)
 	if !ok {
+		return
+	}
+
+	if conv.Type != models.ConversationGroup {
+		WriteError(w, http.StatusBadRequest, "not_a_group", "members can only be removed from a group")
 		return
 	}
 
@@ -308,7 +315,9 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("member removed", "conversation_id", conv.ID, "user_id", targetID, "by", userID)
 
-	s.notifyConversation(r, conv.ID)
+	// The removed user is no longer a member, so they are named explicitly:
+	// without it they would never learn the conversation is gone for them.
+	s.notifyConversation(r, conv.ID, targetID)
 
 	WriteJSON(w, http.StatusOK, map[string]any{"conversation_id": conv.ID, "user_id": targetID})
 }
@@ -426,7 +435,10 @@ func queryInt64(r *http.Request, name string, fallback int64) (int64, error) {
 // This is deliberately best-effort: the REST call has already succeeded
 // and its result is valid whether or not any client happens to be
 // connected, so a missing hub must not turn the request into an error.
-func (s *Server) notifyConversation(r *http.Request, conversationID int64) {
+//
+// formerMembers are users who must also receive the update although they
+// are no longer members, such as the user who was just removed.
+func (s *Server) notifyConversation(r *http.Request, conversationID int64, formerMembers ...int64) {
 	if s.hub == nil {
 		return
 	}
@@ -434,5 +446,6 @@ func (s *Server) notifyConversation(r *http.Request, conversationID int64) {
 	s.hub.Notify(r.Context(), hub.Notification{
 		Type:           hub.NotifyConversationUpdated,
 		ConversationID: conversationID,
+		UserIDs:        formerMembers,
 	})
 }

@@ -48,6 +48,7 @@ type Conversation struct {
 	// Populated on read, not stored on the conversation row itself.
 	Members     []Member `json:"members,omitempty"`
 	UnreadCount int      `json:"unread_count"`
+	LastMessage *Message `json:"last_message,omitempty"` // nil when the conversation has no message yet
 }
 
 // Member links a user to a conversation and tracks how far that user has

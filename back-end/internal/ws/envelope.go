@@ -18,7 +18,6 @@ const (
 	TypeMessageSend      = "message.send"
 	TypeMessageDelivered = "message.delivered"
 	TypeMessageRead      = "message.read"
-	TypeTyping           = "typing"
 	TypeSync             = "sync"
 )
 
@@ -97,12 +96,6 @@ type ReadReceiptPayload struct {
 	UpToSequence   int64 `json:"up_to_sequence"`
 }
 
-// TypingPayload reports that a user started or stopped typing.
-type TypingPayload struct {
-	ConversationID int64 `json:"conversation_id"`
-	Active         bool  `json:"active"`
-}
-
 // StatusPayload tells the sender how far the recipients have got.
 type StatusPayload struct {
 	ConversationID int64  `json:"conversation_id"`
@@ -115,13 +108,6 @@ type StatusPayload struct {
 type PresencePayload struct {
 	UserID int64 `json:"user_id"`
 	Online bool  `json:"online"`
-}
-
-// TypingEvent is the server telling a member that somebody is typing.
-type TypingEvent struct {
-	ConversationID int64 `json:"conversation_id"`
-	UserID         int64 `json:"user_id"`
-	Active         bool  `json:"active"`
 }
 
 // ConversationUpdatedPayload announces a membership change.

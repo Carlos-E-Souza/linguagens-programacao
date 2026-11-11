@@ -14,12 +14,10 @@
 //     be decoded into a concrete payload type until its Type is known, so
 //     the payload is decoded in a second step by the hub.
 //   - The client-to-server and server-to-client constants are declared
-//     separately, because "typing" and "presence" travel in both
-//     directions with different payload shapes.
+//     separately, so each direction lists exactly the types it accepts.
 //
-// Client-to-server: message.send, message.delivered, message.read,
-// typing, sync.
+// Client-to-server: message.send, message.delivered, message.read, sync.
 //
 // Server-to-client: message.ack, message.new, message.status, presence,
-// typing, conversation.updated, sync.end, error, server.shutdown.
+// conversation.updated, sync.end, error, server.shutdown.
 package ws

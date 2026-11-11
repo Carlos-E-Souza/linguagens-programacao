@@ -185,6 +185,47 @@ func (s *Store) MarkRead(ctx context.Context, conversationID, userID, upToSequen
 	return requireAffected(result, "mark read")
 }
 
+// Receipt is the combined confirmation state of one member in one
+// conversation, as accumulated by the hub between two writes. A zero
+// watermark means "no change" for that column.
+type Receipt struct {
+	ConversationID int64
+	UserID         int64
+	Delivered      int64
+	Read           int64
+}
+
+// ApplyReceipts writes many confirmations in one transaction.
+//
+// The hub folds every delivered/read confirmation that arrives within a
+// short window into one Receipt per member, so a burst of confirmations
+// costs one transaction instead of one write each. The update is the same
+// monotonic MAX as MarkDelivered/MarkRead, and reading still implies
+// delivery. A member that left the conversation in the meantime simply
+// matches no row, which is not an error here.
+func (s *Store) ApplyReceipts(ctx context.Context, receipts []Receipt) error {
+	if len(receipts) == 0 {
+		return nil
+	}
+
+	const query = `
+		UPDATE conversation_members
+		SET last_delivered = MAX(last_delivered, ?, ?),
+		    last_read = MAX(last_read, ?)
+		WHERE conversation_id = ? AND user_id = ?`
+
+	return s.withTx(ctx, func(tx *sql.Tx) error {
+		for _, r := range receipts {
+			if _, err := tx.ExecContext(ctx, query,
+				r.Delivered, r.Read, r.Read, r.ConversationID, r.UserID); err != nil {
+				return fmt.Errorf("apply receipt (conversation %d, user %d): %w",
+					r.ConversationID, r.UserID, err)
+			}
+		}
+		return nil
+	})
+}
+
 // requireAffected turns a zero-row update into ErrNotFound, so a status
 // update from a non-member is reported instead of silently ignored.
 func requireAffected(result sql.Result, action string) error {
@@ -223,30 +264,4 @@ func reverseMessages(messages []models.Message) {
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
-}
-
-// GetMessageByClientID finds a message by the client-generated ID that
-// uniquely identifies it within one sender.
-//
-// The hub uses it to return the database-assigned ID in the
-// acknowledgement, which arrives before the persistence worker may have
-// committed the row.
-func (s *Store) GetMessageByClientID(ctx context.Context, senderID int64, clientID string) (models.Message, error) {
-	query := `
-		SELECT ` + messageColumns + `
-		FROM messages
-		WHERE sender_id = ? AND client_id = ?`
-
-	var msg models.Message
-	err := s.db.QueryRowContext(ctx, query, senderID, clientID).Scan(
-		&msg.ID, &msg.ConversationID, &msg.Sequence,
-		&msg.SenderID, &msg.ClientID, &msg.Body, &msg.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return models.Message{}, ErrNotFound
-	}
-	if err != nil {
-		return models.Message{}, fmt.Errorf("get message by client id: %w", err)
-	}
-
-	return msg, nil
 }

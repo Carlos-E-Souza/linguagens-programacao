@@ -28,7 +28,6 @@ type Config struct {
 	ClientQueueSize      int           // per-connection outgoing channel buffer
 	PersistenceQueueSize int           // persistence queue buffer
 	MessageLimitChars    int           // maximum length of a message body
-	TypingCooldown       time.Duration // minimum gap between typing events per user
 	PprofAddress         string        // separate debug listen address; empty disables it
 	DevMode              bool          // whether DEV_MODE is on
 }
@@ -69,9 +68,6 @@ func Load() (Config, error) {
 	if cfg.TokenExpiry, err = envDurationOr("TOKEN_EXPIRY", 24*time.Hour); err != nil {
 		return cfg, err
 	}
-	if cfg.TypingCooldown, err = envDurationOr("TYPING_COOLDOWN", 2*time.Second); err != nil {
-		return cfg, err
-	}
 
 	if cfg.JWTSecret == "" {
 		if !isDevMode() {
@@ -91,9 +87,6 @@ func Load() (Config, error) {
 	}
 	if cfg.MessageLimitChars < 1 {
 		return cfg, fmt.Errorf("MESSAGE_LIMIT_CHARS must be at least 1")
-	}
-	if cfg.TypingCooldown < 0 {
-		return cfg, fmt.Errorf("TYPING_COOLDOWN must not be negative")
 	}
 	// The profiler endpoints expose internals and have no authentication,
 	// so they are refused outside dev mode rather than silently enabled.

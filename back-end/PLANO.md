@@ -15,7 +15,7 @@ Lista de renomeações aplicadas em relação ao rascunho original: `configuraca
 `middleware`→`middleware` (já em inglês), `autenticacao`→`auth`, `migracoes`→`migrations`,
 `cmd/servidor`→`cmd/server`. No banco e no protocolo: `usuarios`→`users`, `conversas`→`conversations`,
 `membros_conversa`→`conversation_members`, `mensagens`→`messages`, `tipo`→`type`, `dados`→`data`,
-`presenca`→`presence`, `digitando`→`typing` (ver a tabela completa de renomeações adiante).
+`presenca`→`presence` (ver a tabela completa de renomeações adiante).
 
 ---
 
@@ -37,6 +37,7 @@ nesta coluna. Use-a para conferir se algum identificador ficou para trás.
 | `internal/persistencia` | `internal/store`   | worker pool de gravação                     |
 | `internal/middleware` | `internal/middleware` | já em inglês                              |
 | `internal/hub`      | `internal/hub`         | já em inglês                                |
+| —                   | `internal/ws`          | envelope e payloads do protocolo WebSocket (criado na implementação) |
 | `migracoes/`        | `migrations/`          | scripts SQL                                 |
 | `dependencias.go`   | (removido)             | imports provisórios não são mais necessários |
 
@@ -80,7 +81,6 @@ nesta coluna. Use-a para conferir se algum identificador ficou para trás.
 | `mensagem.enviar`      | `message.send`          | cliente → servidor              |
 | `mensagem.entregue`    | `message.delivered`     | cliente → servidor              |
 | `mensagem.lida`        | `message.read`          | cliente → servidor              |
-| `digitando`            | `typing`                | ambos os sentidos               |
 | `sincronizar`          | `sync`                  | cliente → servidor              |
 | `mensagem.ack`         | `message.ack`           | servidor → cliente              |
 | `mensagem.nova`        | `message.new`           | servidor → cliente              |
@@ -95,7 +95,6 @@ nesta coluna. Use-a para conferir se algum identificador ficou para trás.
 | `conversa_id`          | `conversation_id`       | payloads                        |
 | `usuario_id`           | `user_id`               | payloads                        |
 | `ate_sequencia`        | `up_to_sequence`        | payloads de confirmação         |
-| `ativo`                | `active`                | payload de `typing`             |
 | `conversas`            | `conversations`         | payload de `sync`               |
 | `ultima_sequencia`     | `last_sequence`         | payload de `sync`               |
 | `criada_em`            | `created_at`            | payload de `message.ack`        |
@@ -121,6 +120,10 @@ nesta coluna. Use-a para conferir se algum identificador ficou para trás.
 | `SEGREDO_JWT`          | `JWT_SECRET`            |
 | `WORKERS_PERSISTENCIA` | `PERSISTENCE_WORKERS`   |
 | `URL_SERVIDOR`         | `SERVER_URL`            |
+| —                      | `DEV_MODE`              |
+| —                      | `PPROF_ADDRESS`         |
+
+`DEV_MODE` e `PPROF_ADDRESS` surgiram na implementação (Fases 0 e 11) e não tinham nome em português.
 
 ---
 
@@ -136,7 +139,7 @@ nesta coluna. Use-a para conferir se algum identificador ficou para trás.
 | Logging             | `log/slog` da biblioteca padrão                                                                      |
 | IDs                 | `INTEGER` autoincremento para usuários, conversas e mensagens; UUID gerado no cliente (`client_id`)  |
 | Ordenação           | Número de sequência por conversa, atribuído pelo Hub (única goroutine, sem condição de corrida)      |
-| Não lidas           | `conversations.last_sequence - conversation_members.last_read`                                       |
+| Não lidas           | mensagens de outros membros com `sequence > conversation_members.last_read` (as próprias não contam)  |
 
 ---
 
@@ -204,7 +207,6 @@ Todo frame é um envelope JSON:
 | `message.send`       | `client_id`, `conversation_id`, `body`           | Envia uma mensagem; o servidor responde com `message.ack`  |
 | `message.delivered`  | `conversation_id`, `up_to_sequence`              | Confirma o recebimento até aquela sequência                |
 | `message.read`       | `conversation_id`, `up_to_sequence`              | Marca como lidas até aquela sequência                      |
-| `typing`             | `conversation_id`, `active`                      | Indica que o usuário começou/parou de digitar              |
 | `sync`               | `conversations: [{conversation_id, last_sequence}]` | Pede as mensagens recebidas enquanto estava offline      |
 
 ### Servidor → cliente
@@ -212,19 +214,18 @@ Todo frame é um envelope JSON:
 | Tipo                  | Dados                                                       | Quando                                                     |
 |-----------------------|-------------------------------------------------------------|------------------------------------------------------------|
 | `message.ack`         | `client_id`, `id`, `conversation_id`, `sequence`, `created_at` | Mensagem aceita (inclusive reenvio de duplicata)         |
+| `message.new`         | mensagem completa                                           | Nova mensagem em uma conversa do usuário                   |
+| `message.status`      | `conversation_id`, `user_id`, `up_to_sequence`, `status`    | Um membro confirmou entrega (`delivered`) ou leitura (`read`) |
+| `presence`            | `user_id`, `online`                                         | Um contato entrou ou saiu                                  |
+| `conversation.updated`| conversa com membros                                        | Conversa criada, membro adicionado ou removido             |
+| `sync.end`            | —                                                           | Fim do envio das mensagens pedidas em `sync`               |
+| `error`               | `code`, `message`, `client_id` (opcional)                   | Requisição inválida (ex.: não é membro da conversa)        |
+| `server.shutdown`     | —                                                           | Graceful shutdown iniciado; o cliente deve reconectar      |
 
 O `id` em `message.ack` é o identificador real gravado no banco. O servidor entrega a mensagem e depois responde,
 esperando por um instante limitado (`ackWaitTimeout`, 2s) que a fila de persistência confirme a gravação. Se a
 gravação não acontecer nesse prazo, o ACK ainda é enviado, mas com `id: 0` — nesse caso o cliente aprende o
 identificador pelo frame `message.new`, que sempre carrega o registro completo.
-| `message.new`         | mensagem completa                                           | Nova mensagem em uma conversa do usuário                   |
-| `message.status`      | `conversation_id`, `user_id`, `up_to_sequence`, `status`    | Um membro confirmou entrega (`delivered`) ou leitura (`read`) |
-| `presence`            | `user_id`, `online`                                         | Um contato entrou ou saiu                                  |
-| `typing`              | `conversation_id`, `user_id`, `active`                      | Um membro está digitando                                   |
-| `conversation.updated`| conversa com membros                                        | Conversa criada, membro adicionado ou removido             |
-| `sync.end`            | —                                                           | Fim do envio das mensagens pedidas em `sync`               |
-| `error`               | `code`, `message`, `client_id` (opcional)                   | Requisição inválida (ex.: não é membro da conversa)        |
-| `server.shutdown`     | —                                                           | Graceful shutdown iniciado; o cliente deve reconectar      |
 
 Valores de `status`: `pending` (na fila), `sent` (ACK), `delivered` e `read`; `failed` para erro definitivo do
 servidor. A interface é responsável por traduzir esses valores para o texto exibido ao usuário.
@@ -240,7 +241,7 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
       modo dev (`DEV_MODE=true`).
 - [x] Adicionar variáveis para os parâmetros de tempo: `PING_INTERVAL` (padrão 30s), `PONG_TIMEOUT` (60s),
       `TOKEN_EXPIRY` (24h), `CLIENT_QUEUE_SIZE` (256), `PERSISTENCE_QUEUE_SIZE` (4096), `MESSAGE_LIMIT_CHARS`
-      (4000), `TYPING_COOLDOWN` (2s).
+      (4000).
 - [x] `cmd/server/main.go`: carregar configuração, configurar `slog`, criar `http.Server` com `ReadHeaderTimeout`,
       e esqueleto do graceful shutdown com `signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)`.
 - [x] Endpoint `GET /api/health` retornando `200` (útil para testes e para o cliente verificar o servidor).
@@ -269,14 +270,19 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
       apenas as migrations pendentes.
 - [x] `models`: structs `User`, `Conversation`, `Member`, `Message` com tags JSON em inglês.
 - [x] Repositórios em `db` (todos recebendo `context.Context`):
-  - [ ] Usuários: `CreateUser`, `GetUserByUsername`, `GetUserByID`, `SearchUsers(term, limit)`.
-  - [ ] Conversas: `CreateConversation` (em transação, com membros), `GetDirectConversation(a, b)`,
+  - [x] Usuários: `CreateUser`, `GetUserByUsername`, `GetUserByID`, `SearchUsers(term, limit)`.
+  - [x] Conversas: `CreateConversation` (em transação, com membros), `GetDirectConversation(a, b)`,
         `ListUserConversations` (com contador de não lidas e última mensagem), `GetConversation`.
-  - [ ] Membros: `AddMembers`, `RemoveMember`, `ListMembers`, `IsMember`, `ListContacts(userID)`.
-  - [ ] Mensagens: `InsertMessages` em lote (`INSERT ... ON CONFLICT DO NOTHING`),
+
+        > **Correção:** a primeira versão de `ListUserConversations` não trazia a última mensagem e ordenava por
+        > `last_sequence`, o que ordena pela quantidade de mensagens, não pela atividade. Agora devolve
+        > `last_message` (omitido quando a conversa está vazia) e ordena por
+        > `COALESCE(created_at da última mensagem, created_at da conversa)`.
+  - [x] Membros: `AddMembers`, `RemoveMember`, `ListMembers`, `IsMember`, `ListContacts(userID)`.
+  - [x] Mensagens: `InsertMessages` em lote (`INSERT ... ON CONFLICT DO NOTHING`),
         `ListMessages(conversationID, beforeSequence, limit)`, `ListMessagesAfter(conversationID, sequence)`,
         `LastSequence(conversationID)`.
-  - [ ] Status: `MarkDelivered` e `MarkRead` (só avançam: `MAX(atual, nova)`).
+  - [x] Status: `MarkDelivered` e `MarkRead` (só avançam: `MAX(atual, nova)`).
 - [x] Testes dos repositórios com banco em memória (`file::memory:?cache=shared`) ou arquivo temporário (`t.TempDir()`).
 
 **Pronto quando:** o servidor cria o banco na primeira execução e os testes dos repositórios passam.
@@ -301,20 +307,33 @@ servidor. A interface é responsável por traduzir esses valores para o texto ex
 
 ## Fase 3 — API REST
 
-Todas as rotas abaixo usam `middleware.Authenticate`.
+Todas as rotas abaixo exigem autenticação.
+
+> **Desvio do plano:** as rotas usam `httputil.Server.authenticate`, uma cópia de `middleware.Authenticate`.
+> `middleware` importa `httputil` para responder erros, então `httputil` não pode importar `middleware` de volta
+> sem criar um ciclo. As duas implementações devem continuar equivalentes.
 
 - [x] `GET /api/users?search=<termo>`: busca por `username`/`display_name`, limite de 20, excluindo o próprio usuário;
       incluir `online` consultando o Hub.
-- [x] `GET /api/conversations`: conversas do usuário com membros, última mensagem e `unread_count`, ordenadas pela última atividade.
+- [x] `GET /api/conversations`: conversas do usuário com membros, última mensagem (`last_message`) e `unread_count`,
+      ordenadas pela última atividade.
 - [x] `POST /api/conversations`:
-  - [ ] `{ "type": "direct", "members": [id] }` → devolve a conversa existente (`200`) ou cria (`201`).
-  - [ ] `{ "type": "group", "name": "...", "members": [ids] }` → cria com o criador como `admin`.
-  - [ ] Validar que os usuários existem; notificar os membros online com `conversation.updated`.
+  - [x] `{ "type": "direct", "members": [id] }` → devolve a conversa existente (`200`) ou cria (`201`).
+  - [x] `{ "type": "group", "name": "...", "members": [ids] }` → cria com o criador como `admin`.
+  - [x] Validar que os usuários existem; notificar os membros online com `conversation.updated`.
 - [x] `POST /api/conversations/{id}/members`: só grupos, só membros podem adicionar; notificar via Hub.
-- [x] `DELETE /api/conversations/{id}/members/{userId}`: o próprio usuário pode sair; um `admin` pode remover outros;
-      notificar via Hub e atualizar o cache de membros do Hub.
+- [x] `DELETE /api/conversations/{id}/members/{userId}`: só grupos; o próprio usuário pode sair; um `admin` pode
+      remover outros; notificar via Hub (inclusive o usuário removido) e atualizar o cache de membros do Hub.
+
+      > **Correções:** sair de uma conversa `direct` agora responde `400 not_a_group`. Antes era permitido, e o
+      > próximo `POST /api/conversations` criava uma segunda conversa direta para o mesmo par. O usuário removido
+      > também passa a receber `conversation.updated` (sem ele na lista de membros), por meio de
+      > `hub.Notification.UserIDs`; antes o broadcast ia só para quem continuava no grupo.
 - [x] `GET /api/conversations/{id}/messages?before=<sequence>&limit=<n>`: paginação por sequência
       (padrão 50, máximo 100), só para membros (`403` caso contrário), resposta em ordem crescente de sequência.
+
+      > **Desvio do plano:** um não membro recebe `404`, não `403`, em todas as rotas de conversa. Assim a API não
+      > revela que a conversa existe para quem não participa dela.
 - [x] Testes de cada handler com `httptest` cobrindo sucesso, `400`, `401`, `403` e `404`.
 
 **Pronto quando:** todas as rotas da tabela do README funcionam via `curl`.
@@ -326,21 +345,27 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 - [x] `hub.Client`: `userID`, conexão, canal `send chan []byte` com buffer (`CLIENT_QUEUE_SIZE`),
       `context.CancelFunc` próprio.
 - [x] `hub.Hub` com:
-  - [ ] Canais `register`, `unregister`, `incoming` (mensagens vindas dos clientes) e `notify`
+  - [x] Canais `register`, `unregister`, `incoming` (mensagens vindas dos clientes) e `notify`
         (eventos vindos da API REST, ex.: membros alterados).
-  - [ ] `map[int64]map[*Client]struct{}` de usuários conectados (um usuário pode ter mais de uma conexão).
-  - [ ] Cache `map[int64]map[int64]struct{}` de membros por conversa, carregado do banco sob demanda.
-  - [ ] `sync.RWMutex` protegendo as estruturas lidas por outras goroutines (ex.: `IsOnline(userID)` usado pela API).
-  - [ ] `Run(ctx)`: laço com `select` sobre `register`, `unregister`, `incoming`, `notify` e `ctx.Done()`.
+  - [x] `map[int64]map[*Client]struct{}` de usuários conectados (um usuário pode ter mais de uma conexão).
+  - [x] Cache `map[int64]map[int64]struct{}` de membros por conversa, carregado do banco sob demanda.
+  - [x] `sync.RWMutex` protegendo as estruturas lidas por outras goroutines (ex.: `IsOnline(userID)` usado pela API).
+  - [x] `Run(ctx)`: laço com `select` sobre `register`, `unregister`, `incoming`, `notify` e `ctx.Done()`.
 - [x] Handler `GET /ws`: autenticar pelo header `Authorization`, `websocket.Accept`, limitar tamanho da mensagem
       (`SetReadLimit`), criar o `Client`, registrar no Hub e iniciar as goroutines:
-  - [ ] `readMessages`: lê frames, decodifica o envelope, valida e envia para `hub.incoming`; ao sair, desregistra.
-  - [ ] `writeMessages`: consome `client.send` e escreve com timeout por escrita (`context.WithTimeout`).
+  - [x] `readMessages`: lê frames, decodifica o envelope, valida e envia para `hub.incoming`; ao sair, desregistra.
+  - [x] `writeMessages`: consome `client.send` e escreve com timeout por escrita (`context.WithTimeout`).
 - [x] Cliente lento: se `client.send` estiver cheio, o Hub não bloqueia — fecha a conexão com
       `websocket.StatusPolicyViolation` e desregistra.
+
+      > **Correção:** o código de fechamento é registrado no `Client` (`closeWith`/`CloseStatus`), e o handshake
+      > de fechamento roda na goroutine de escrita enquanto a leitura ainda está ativa. Antes, toda conexão
+      > encerrada pelo servidor caía sem frame de fechamento (o `Read` com contexto cancelado derrubava o socket),
+      > então nenhum código chegava ao cliente.
 - [x] Ao registrar a primeira conexão de um usuário: enviar `presence {online: true}` aos contatos online.
 - [x] Ao desregistrar a última conexão: enviar `presence {online: false}`.
-- [x] Testes do Hub com clientes falsos (sem rede) e um teste de integração com `httptest.NewServer` e dois clientes WS.
+- [x] Testes do Hub com clientes falsos (sem rede) e um teste de integração com `httptest.NewServer` e dois clientes WS
+      (`TestWebSocketTwoClientsSeePresence`).
 
 **Pronto quando:** dois clientes conectam, cada um recebe a presença do outro e a desconexão é detectada.
 
@@ -349,17 +374,18 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 ## Fase 5 — Envio de mensagens
 
 - [x] Tratar `message.send` no Hub:
-  - [ ] Verificar se o remetente é membro da conversa (senão, `error` com o `client_id`).
-  - [ ] Validar o conteúdo (não vazio, tamanho máximo, ex.: 4000 caracteres).
-  - [ ] Deduplicação: manter um cache recente `(sender_id, client_id) → ack`; se já existir, reenviar o mesmo ACK
+  - [x] Verificar se o remetente é membro da conversa (senão, `error` com o `client_id`).
+  - [x] Validar o conteúdo (não vazio, tamanho máximo, ex.: 4000 caracteres).
+  - [x] Deduplicação: manter um cache recente `(sender_id, client_id) → ack`; se já existir, reenviar o mesmo ACK
         sem gerar nova mensagem. O `UNIQUE (sender_id, client_id)` do banco é a garantia final.
-  - [ ] Atribuir a próxima `sequence` da conversa (contador em memória inicializado com `LastSequence` do banco).
-  - [ ] Preencher remetente e `created_at` (horário do servidor, UTC).
-  - [ ] Responder ao remetente com `message.ack`.
-  - [ ] Colocar a mensagem na fila de persistência (Fase 6).
-  - [ ] Entregar `message.new` a todas as conexões dos membros online, inclusive outras conexões do remetente.
+  - [x] Atribuir a próxima `sequence` da conversa (contador em memória inicializado com `LastSequence` do banco).
+  - [x] Preencher remetente e `created_at` (horário do servidor, UTC).
+  - [x] Responder ao remetente com `message.ack`.
+  - [x] Colocar a mensagem na fila de persistência (Fase 6).
+  - [x] Entregar `message.new` a todas as conexões dos membros online, inclusive outras conexões do remetente.
 - [x] Atualizar `conversations.last_sequence` junto com a gravação das mensagens.
-- [x] Testes: ordem das sequências com envios concorrentes, reenvio do mesmo `client_id`, envio para conversa alheia.
+- [x] Testes: ordem das sequências com envios concorrentes (`TestConcurrentSendsGetUniqueOrderedSequences`), reenvio do
+      mesmo `client_id`, envio para conversa alheia.
 
 **Pronto quando:** mensagens chegam em tempo real aos membros conectados, na ordem, sem duplicatas.
 
@@ -376,26 +402,40 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 - [x] `Shutdown(ctx)`: fechar a fila, esperar os workers esvaziarem tudo com `sync.WaitGroup`, respeitando o prazo do `ctx`.
 - [x] Atenção à ordem: como vários workers gravam em paralelo, a ordem na tabela não importa —
       a ordem é dada pela coluna `sequence`.
-- [x] Testes: todas as mensagens enfileiradas são gravadas após `Shutdown`; comportamento com fila cheia.
+- [x] Testes: todas as mensagens enfileiradas são gravadas após `Shutdown`; comportamento com fila cheia
+      (`TestPoolFullQueueAppliesBackpressure`).
+
+      > **Correção:** `NewPool` não recebe mais `context.Context`. Antes, o pool era criado com o contexto do
+      > sinal, e os workers saíam no SIGTERM enquanto o Hub ainda confirmava mensagens; o que estava na fila se
+      > perdia. Agora os workers só param em `Shutdown`, depois de esvaziar a fila.
 
 **Pronto quando:** o histórico via `GET /api/conversations/{id}/messages` contém as mensagens enviadas pelo WS.
 
 ---
 
-## Fase 7 — Status, presença e "digitando"
+## Fase 7 — Status e presença
 
 - [x] `message.delivered`: atualizar `last_delivered` do membro e enviar `message.status {status: "delivered"}`
       ao remetente (e demais membros, para grupos).
 - [x] `message.read`: atualizar `last_read` (e `last_delivered`, se menor) e enviar `message.status {status: "read"}`.
 - [x] Gravar as atualizações de status de forma assíncrona (pela fila de persistência ou fila própria),
       agrupando várias confirmações da mesma conversa.
+
+      > Fila própria (`Hub.receipts`) consumida por uma goroutine do Hub. Ela junta as confirmações em uma entrada
+      > por (conversa, membro), mantendo o maior `delivered` e o maior `read`, e grava tudo com
+      > `db.ApplyReceipts` em uma transação a cada 100ms ou com 256 membros pendentes. O `message.status` sai na
+      > hora, pelo laço do Hub. Se a fila encher, a gravação daquela confirmação é pulada com log: as marcas são
+      > cumulativas, então a próxima confirmação do membro a cobre. No shutdown a fila é esvaziada antes de o
+      > Hub terminar. `up_to_sequence` precisa ser positivo. Testes: `TestReceiptsAreBroadcastOnceAndPersisted`,
+      > `TestApplyReceiptsBatch`.
 - [x] Em grupos, a resposta de `GET /api/conversations` inclui `last_delivered`/`last_read` de cada membro para o
       cliente calcular o status (entregue quando todos receberam, lida quando todos leram).
-- [x] `typing`: repassar apenas aos outros membros online da conversa, sem persistir;
-      limitar a frequência por usuário (`TYPING_COOLDOWN`, ex.: no máximo 1 evento a cada 2s).
 - [x] `GET /api/users` e a lista de membros incluem o estado `online` atual.
 
-**Pronto quando:** o cliente consegue mostrar enviada → entregue → lida, presença e "digitando...".
+> A indicação de "digitando" (`typing`, com o limite `TYPING_COOLDOWN`) foi retirada do projeto, no servidor e no
+> cliente. Um quadro `typing` enviado ao servidor agora recebe `error` com `unknown_type`.
+
+**Pronto quando:** o cliente consegue mostrar enviada → entregue → lida e presença.
 
 ---
 
@@ -408,7 +448,13 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 - [x] Enviar `sync.end` ao terminar.
 - [x] Mensagens ainda na fila de persistência também devem ser consideradas: consultar o banco **e** um buffer em memória
       das mensagens recentes ainda não gravadas, ou forçar a gravação antes da consulta.
-- [x] Teste: cliente desconecta, recebe mensagens enquanto offline, reconecta e recebe todas, em ordem e sem duplicatas.
+
+      > `Hub.unsaved` guarda cada mensagem entregue ao pool até o pool responder por ela (gravada ou não). O
+      > `sync` tira uma cópia desse buffer no laço do Hub antes de consultar o banco e junta os dois por
+      > `sequence`, sem duplicatas (a linha do banco prevalece, porque traz o `id`). Testes:
+      > `TestSyncIncludesMessagesStillInTheQueue`, `TestMergeBackfill`.
+- [x] Teste: cliente desconecta, recebe mensagens enquanto offline, reconecta e recebe todas, em ordem e sem duplicatas
+      (`TestReconnectSyncDeliversMissedMessagesOnce`).
 
 **Pronto quando:** nenhuma mensagem é perdida em uma queda de conexão.
 
@@ -419,8 +465,10 @@ Todas as rotas abaixo usam `middleware.Authenticate`.
 - [x] Na goroutine de escrita, um `time.Ticker` com `PING_INTERVAL` chama `conn.Ping(ctx)` com timeout `PONG_TIMEOUT`.
 - [x] Se o ping falhar, cancelar o contexto do cliente, fechar a conexão e desregistrar no Hub.
 - [x] Garantir que as duas goroutines do cliente terminem quando qualquer uma delas falhar (contexto compartilhado).
-- [x] Teste: cliente que para de responder é removido do Hub e os contatos recebem `presence {online: false}`.
-- [x] Verificar ausência de vazamento de goroutines após conexões e desconexões repetidas (`runtime.NumGoroutine`).
+- [x] Teste: cliente que para de responder é removido do Hub e os contatos recebem `presence {online: false}`
+      (`TestUnresponsiveClientIsRemoved`).
+- [x] Verificar ausência de vazamento de goroutines após conexões e desconexões repetidas (`runtime.NumGoroutine`)
+      (`TestConnectionsDoNotLeakGoroutines`).
 
 **Pronto quando:** conexões mortas são detectadas e liberadas em até `PING_INTERVAL + PONG_TIMEOUT`.
 
@@ -432,11 +480,14 @@ Ordem de encerramento ao receber `SIGINT`/`SIGTERM`:
 
 - [x] 1. Parar de aceitar novas conexões e requisições: `http.Server.Shutdown(ctx)` com prazo (ex.: 15s).
 - [x] 2. Enviar `server.shutdown` a todos os clientes e fechar as conexões com `websocket.StatusGoingAway`.
+
+      > Teste com socket real: `TestShutdownClosesSocketsWithGoingAway`.
 - [x] 3. Parar o Hub (cancelar seu contexto) e esperar o laço terminar.
 - [x] 4. Encerrar o pool de persistência, gravando todas as mensagens pendentes.
 - [x] 5. Fechar o banco.
 - [x] Usar um `sync.WaitGroup` para as goroutines de longa duração (Hub, workers, conexões) e `context` para o prazo total.
-- [x] Teste: enviar mensagens e, em seguida, `SIGTERM` — todas devem estar no banco após o encerramento.
+- [x] Teste: enviar mensagens e, em seguida, `SIGTERM` — todas devem estar no banco após o encerramento
+      (`TestAcceptedMessagesSurviveShutdown`, com o pool real e a mesma ordem de encerramento do `cmd/server`).
 
 **Pronto quando:** desligar o servidor não perde mensagens aceitas (que receberam ACK).
 
@@ -451,12 +502,17 @@ Ordem de encerramento ao receber `SIGINT`/`SIGTERM`:
 
       > Configurado por `PPROF_ADDRESS`. O servidor de debug roda em um endereço próprio e o `config.Load` recusa
       > `PPROF_ADDRESS` fora do modo dev, já que os endpoints não têm autenticação.
-- [x] Revisar limites: tamanho de mensagem (`MESSAGE_LIMIT_CHARS`), taxa de mensagens por cliente
-      (`TYPING_COOLDOWN`) e tamanho dos buffers (`CLIENT_QUEUE_SIZE`, `PERSISTENCE_QUEUE_SIZE`).
+- [x] Revisar limites: tamanho de mensagem (`MESSAGE_LIMIT_CHARS`) e tamanho dos buffers (`CLIENT_QUEUE_SIZE`,
+      `PERSISTENCE_QUEUE_SIZE`).
 - [x] Atualizar o `README.md` do back-end com instruções de execução, variáveis novas e resultados do teste de carga.
 
-      > **Pendente:** `net/http/pprof` ainda não está exposto. É a única tarefa em aberto do plano e não afeta o
-      > funcionamento do servidor: serve apenas para inspecionar CPU e memória durante o desenvolvimento.
+---
+
+## Revisão de 2026-11-10
+
+Todos os pontos levantados na revisão foram corrigidos e estão anotados nas fases correspondentes. O código sem
+uso (`db.GetMessageByClientID` e `hub.NotifyMembersAdded`) foi removido. Continuam como desvios intencionais,
+documentados na Fase 3: `404` em vez de `403` para não membros e a cópia de `authenticate` em `httputil`.
 
 ---
 

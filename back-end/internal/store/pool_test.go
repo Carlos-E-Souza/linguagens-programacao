@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -60,7 +62,7 @@ func TestPoolPersistsEnqueuedMessages(t *testing.T) {
 	store := newStoreFixture(t)
 	conv := seedConversation(t, store)
 
-	pool := NewPool(ctx, store, Options{
+	pool := NewPool(store, Options{
 		Workers:     1,
 		QueueSize:   16,
 		BatchSize:   4,
@@ -134,7 +136,7 @@ func TestPoolShutdownDrainsQueue(t *testing.T) {
 	store := newStoreFixture(t)
 	conv := seedConversation(t, store)
 
-	pool := NewPool(ctx, store, Options{
+	pool := NewPool(store, Options{
 		Workers:     1,
 		QueueSize:   64,
 		BatchSize:   64,        // large, so nothing flushes early
@@ -175,7 +177,7 @@ func TestPoolRejectsEnqueueAfterShutdown(t *testing.T) {
 	store := newStoreFixture(t)
 	conv := seedConversation(t, store)
 
-	pool := NewPool(ctx, store, DefaultOptions(8, 1))
+	pool := NewPool(store, DefaultOptions(8, 1))
 
 	if err := pool.Shutdown(ctx); err != nil {
 		t.Fatalf("Shutdown() failed: %v", err)
@@ -200,11 +202,94 @@ func TestPoolShutdownIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	store := newStoreFixture(t)
 
-	pool := NewPool(ctx, store, DefaultOptions(8, 1))
+	pool := NewPool(store, DefaultOptions(8, 1))
 
 	for i := 0; i < 3; i++ {
 		if err := pool.Shutdown(ctx); err != nil {
 			t.Fatalf("Shutdown() call %d failed: %v", i+1, err)
 		}
+	}
+}
+
+// blockingWriter holds every write until release is closed, so a test can
+// fill the queue behind a worker that is busy.
+type blockingWriter struct {
+	release chan struct{}
+	started chan struct{}
+	once    sync.Once
+
+	mu      sync.Mutex
+	written []models.Message
+}
+
+func (w *blockingWriter) InsertMessages(ctx context.Context, messages []models.Message) ([]models.Message, error) {
+	w.once.Do(func() { close(w.started) })
+	<-w.release
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.written = append(w.written, messages...)
+
+	stored := make([]models.Message, len(messages))
+	for i, m := range messages {
+		m.ID = int64(len(w.written) - len(messages) + i + 1)
+		stored[i] = m
+	}
+	return stored, nil
+}
+
+// TestPoolFullQueueAppliesBackpressure covers Phase 6: with the queue
+// full, Enqueue waits up to EnqueueWait and then fails instead of
+// silently dropping the message, and everything it did accept is still
+// written once the writer recovers.
+func TestPoolFullQueueAppliesBackpressure(t *testing.T) {
+	writer := &blockingWriter{release: make(chan struct{}), started: make(chan struct{})}
+
+	pool := NewPool(writer, Options{
+		Workers:     1,
+		QueueSize:   1,
+		BatchSize:   1,
+		FlushEvery:  time.Hour,
+		EnqueueWait: 50 * time.Millisecond,
+	})
+
+	msg := func(n int) models.Message {
+		return models.Message{ConversationID: 1, Sequence: int64(n), SenderID: 1,
+			ClientID: fmt.Sprintf("full-%d", n), Body: "x", CreatedAt: time.Now().UTC()}
+	}
+	ctx := context.Background()
+
+	// The first message is taken by the worker, which then blocks.
+	if _, err := pool.Enqueue(ctx, msg(1)); err != nil {
+		t.Fatalf("Enqueue(1) failed: %v", err)
+	}
+	<-writer.started
+
+	// The second one fills the single queue slot.
+	if _, err := pool.Enqueue(ctx, msg(2)); err != nil {
+		t.Fatalf("Enqueue(2) failed: %v", err)
+	}
+
+	// The third one has nowhere to go: it must wait, then fail.
+	start := time.Now()
+	if _, err := pool.Enqueue(ctx, msg(3)); err == nil {
+		t.Fatal("Enqueue(3) succeeded on a full queue; want an error")
+	}
+	if waited := time.Since(start); waited < 40*time.Millisecond {
+		t.Errorf("Enqueue(3) gave up after %s; want it to wait about EnqueueWait (50ms)", waited)
+	}
+
+	close(writer.release)
+
+	shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := pool.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("Shutdown() failed: %v", err)
+	}
+
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if got, want := len(writer.written), 2; got != want {
+		t.Errorf("messages written: got %d, want %d (both accepted messages)", got, want)
 	}
 }

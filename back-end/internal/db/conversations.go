@@ -119,19 +119,32 @@ func (s *Store) GetDirectConversation(ctx context.Context, userA, userB int64) (
 }
 
 // ListUserConversations returns every conversation the user belongs to,
-// most recently active first, with the unread count already computed.
+// with the unread count and the last message, most recently active first.
 //
-// Unread is last_sequence minus what the member has read, clamped at
-// zero so an edge case cannot produce a negative badge in the client.
+// Unread counts the messages from the other members after what this
+// member has read. The member's own messages never count: sending does not
+// move the read watermark, so last_sequence - last_read would show a badge
+// for messages the user wrote themselves.
+//
+// "Most recently active" means the time of the last message, falling back
+// to the creation time for a conversation without messages. Ordering by
+// last_sequence instead would rank conversations by how many messages
+// they have, not by when they were last used. Every timestamp is written
+// in UTC by the same driver, so comparing them as text is chronological.
 func (s *Store) ListUserConversations(ctx context.Context, userID int64) ([]models.Conversation, error) {
 	const query = `
 		SELECT
 			c.id, c.type, c.name, c.created_by, c.last_sequence, c.created_at,
-			MAX(c.last_sequence - m.last_read, 0) AS unread_count
+			(SELECT COUNT(*) FROM messages um
+			 WHERE um.conversation_id = c.id AND um.sequence > m.last_read
+			   AND um.sender_id != m.user_id) AS unread_count,
+			lm.id, lm.sequence, lm.sender_id, lm.client_id, lm.body, lm.created_at
 		FROM conversations c
 		JOIN conversation_members m ON m.conversation_id = c.id
+		LEFT JOIN messages lm ON lm.conversation_id = c.id
+			AND lm.sequence = (SELECT MAX(sequence) FROM messages WHERE conversation_id = c.id)
 		WHERE m.user_id = ?
-		ORDER BY c.last_sequence DESC, c.id DESC`
+		ORDER BY COALESCE(lm.created_at, c.created_at) DESC, c.id DESC`
 
 	rows, err := s.db.QueryContext(ctx, query, userID)
 	if err != nil {
@@ -144,12 +157,33 @@ func (s *Store) ListUserConversations(ctx context.Context, userID int64) ([]mode
 		var conv models.Conversation
 		var name sql.NullString
 
+		// The last-message columns are NULL for an empty conversation
+		// because of the LEFT JOIN, hence the nullable destinations.
+		var (
+			lastID, lastSequence, lastSender sql.NullInt64
+			lastClientID, lastBody           sql.NullString
+			lastCreatedAt                    sql.NullTime
+		)
+
 		err := rows.Scan(&conv.ID, &conv.Type, &name, &conv.CreatedBy,
-			&conv.LastSequence, &conv.CreatedAt, &conv.UnreadCount)
+			&conv.LastSequence, &conv.CreatedAt, &conv.UnreadCount,
+			&lastID, &lastSequence, &lastSender, &lastClientID, &lastBody, &lastCreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("scan conversation: %w", err)
 		}
 		conv.Name = name.String
+
+		if lastID.Valid {
+			conv.LastMessage = &models.Message{
+				ID:             lastID.Int64,
+				ConversationID: conv.ID,
+				Sequence:       lastSequence.Int64,
+				SenderID:       lastSender.Int64,
+				ClientID:       lastClientID.String,
+				Body:           lastBody.String,
+				CreatedAt:      lastCreatedAt.Time,
+			}
+		}
 
 		conversations = append(conversations, conv)
 	}

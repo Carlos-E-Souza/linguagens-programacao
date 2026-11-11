@@ -378,6 +378,10 @@ func TestUnreadCountAndReadWatermark(t *testing.T) {
 	if got, want := unreadFor(bob.ID), 3; got != want {
 		t.Errorf("unread before reading: got %d, want %d", got, want)
 	}
+	// The sender's own messages are never unread for them.
+	if got, want := unreadFor(alice.ID), 0; got != want {
+		t.Errorf("unread for the sender: got %d, want %d", got, want)
+	}
 
 	if err := s.MarkRead(ctx, conv.ID, bob.ID, 2); err != nil {
 		t.Fatalf("MarkRead() failed: %v", err)
@@ -647,5 +651,112 @@ func TestStoreAgainstSharedMemoryDatabase(t *testing.T) {
 	}
 	if user.ID == 0 {
 		t.Error("expected a non-zero user id")
+	}
+}
+
+// TestListUserConversationsLastMessageAndActivityOrder covers the two
+// promises of the conversation list: each entry carries its last message,
+// and the most recently active conversation comes first, regardless of
+// how many messages each one has.
+func TestListUserConversationsLastMessageAndActivityOrder(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	alice := mustCreateUser(t, s, "alice")
+	bob := mustCreateUser(t, s, "bob")
+	carol := mustCreateUser(t, s, "carol")
+
+	busy := mustCreateDirect(t, s, alice, bob)     // many old messages
+	recent := mustCreateDirect(t, s, alice, carol) // one new message
+	empty := mustCreateGroup(t, s, alice, "empty", []int64{bob.ID})
+
+	base := time.Now().UTC().Add(time.Hour)
+	at := func(m models.Message, offset time.Duration) models.Message {
+		m.CreatedAt = base.Add(offset)
+		return m
+	}
+
+	if _, err := s.InsertMessages(ctx, []models.Message{
+		at(newMessage(busy.ID, 1, bob.ID, "b1", "old one"), 1*time.Second),
+		at(newMessage(busy.ID, 2, bob.ID, "b2", "old two"), 2*time.Second),
+		at(newMessage(busy.ID, 3, bob.ID, "b3", "old three"), 3*time.Second),
+		at(newMessage(recent.ID, 1, carol.ID, "c1", "newest"), 10*time.Second),
+	}); err != nil {
+		t.Fatalf("InsertMessages() failed: %v", err)
+	}
+
+	convs, err := s.ListUserConversations(ctx, alice.ID)
+	if err != nil {
+		t.Fatalf("ListUserConversations() failed: %v", err)
+	}
+	if got, want := len(convs), 3; got != want {
+		t.Fatalf("conversation count: got %d, want %d", got, want)
+	}
+
+	// recent has the newest message, busy the older ones, and the empty
+	// group only its creation time, which is before both.
+	order := []int64{convs[0].ID, convs[1].ID, convs[2].ID}
+	if want := []int64{recent.ID, busy.ID, empty.ID}; fmt.Sprint(order) != fmt.Sprint(want) {
+		t.Errorf("order: got %v, want %v (recent, busy, empty)", order, want)
+	}
+
+	last := convs[1].LastMessage
+	if last == nil {
+		t.Fatal("busy conversation has no last_message")
+	}
+	if last.Sequence != 3 || last.Body != "old three" || last.ID == 0 {
+		t.Errorf("busy last_message: got seq=%d body=%q id=%d, want seq=3 body=\"old three\" id>0",
+			last.Sequence, last.Body, last.ID)
+	}
+	if !last.CreatedAt.Equal(base.Add(3 * time.Second)) {
+		t.Errorf("busy last_message created_at: got %v, want %v", last.CreatedAt, base.Add(3*time.Second))
+	}
+
+	if convs[2].LastMessage != nil {
+		t.Errorf("empty conversation should have no last_message, got %+v", convs[2].LastMessage)
+	}
+}
+
+// TestApplyReceiptsBatch covers the batched watermark write: it is
+// monotonic, reading implies delivery, and a member who already left is
+// skipped without failing the batch.
+func TestApplyReceiptsBatch(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+
+	alice := mustCreateUser(t, s, "alice")
+	bob := mustCreateUser(t, s, "bob")
+	carol := mustCreateUser(t, s, "carol")
+	group := mustCreateGroup(t, s, alice, "team", []int64{bob.ID, carol.ID})
+
+	if err := s.MarkDelivered(ctx, group.ID, bob.ID, 10); err != nil {
+		t.Fatalf("MarkDelivered() failed: %v", err)
+	}
+	if err := s.RemoveMember(ctx, group.ID, carol.ID); err != nil {
+		t.Fatalf("RemoveMember() failed: %v", err)
+	}
+
+	err := s.ApplyReceipts(ctx, []Receipt{
+		{ConversationID: group.ID, UserID: bob.ID, Delivered: 4},           // older: ignored
+		{ConversationID: group.ID, UserID: alice.ID, Read: 7},              // read implies delivered
+		{ConversationID: group.ID, UserID: carol.ID, Delivered: 3},         // no longer a member
+		{ConversationID: group.ID, UserID: bob.ID, Delivered: 12, Read: 2}, // advances both
+	})
+	if err != nil {
+		t.Fatalf("ApplyReceipts() failed: %v", err)
+	}
+
+	members, err := s.ListMembers(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListMembers() failed: %v", err)
+	}
+
+	want := map[int64][2]int64{alice.ID: {7, 7}, bob.ID: {12, 2}}
+	for _, m := range members {
+		w := want[m.UserID]
+		if m.LastDelivered != w[0] || m.LastRead != w[1] {
+			t.Errorf("user %d: got delivered=%d read=%d, want delivered=%d read=%d",
+				m.UserID, m.LastDelivered, m.LastRead, w[0], w[1])
+		}
 	}
 }

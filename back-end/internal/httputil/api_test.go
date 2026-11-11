@@ -566,3 +566,33 @@ func TestWrongMethodIsRejected(t *testing.T) {
 func itoa(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
+
+// TestRemoveMemberFromDirectConversationIsRejected keeps a direct
+// conversation intact: leaving it would let a second one be created for
+// the same pair.
+func TestRemoveMemberFromDirectConversationIsRejected(t *testing.T) {
+	f := newFixture(t)
+	alice := f.register("alice")
+	bob := f.register("bob")
+	token := f.login("alice")
+
+	rec := f.do(http.MethodPost, "/api/conversations", token, createConversationRequest{
+		Type: models.ConversationDirect, Members: []int64{bob.ID},
+	})
+	var conv models.Conversation
+	_ = json.Unmarshal(rec.Body.Bytes(), &conv)
+
+	rec = f.do(http.MethodDelete,
+		"/api/conversations/"+itoa(conv.ID)+"/members/"+itoa(alice.ID), token, nil)
+	if got, want := rec.Code, http.StatusBadRequest; got != want {
+		t.Fatalf("leave direct: got %d, want %d (%s)", got, want, rec.Body)
+	}
+
+	// The pair still resolves to the same conversation.
+	rec = f.do(http.MethodPost, "/api/conversations", token, createConversationRequest{
+		Type: models.ConversationDirect, Members: []int64{bob.ID},
+	})
+	if got, want := rec.Code, http.StatusOK; got != want {
+		t.Errorf("recreate direct: got %d, want %d (existing conversation)", got, want)
+	}
+}

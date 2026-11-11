@@ -68,7 +68,11 @@ func run() error {
 
 	// The persistence pool and the hub are started before the HTTP server
 	// so that a request arriving immediately already has both available.
-	pool := storepkg.NewPool(ctx, store, storepkg.DefaultOptions(cfg.PersistenceQueueSize, cfg.PersistenceWorkers))
+	//
+	// The pool is not tied to ctx on purpose: ctx is cancelled by the
+	// signal, while the hub may still accept messages until it is stopped
+	// below. The pool only stops through pool.Shutdown, which drains it.
+	pool := storepkg.NewPool(store, storepkg.DefaultOptions(cfg.PersistenceQueueSize, cfg.PersistenceWorkers))
 
 	realtime := hub.New(cfg, store, pool)
 

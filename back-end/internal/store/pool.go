@@ -73,9 +73,11 @@ func DefaultOptions(queueSize, workers int) Options {
 
 // NewPool starts the worker goroutines.
 //
-// The pool takes a context so that cancelling it stops the workers, but
-// Shutdown remains the orderly path: it drains the queue first.
-func NewPool(ctx context.Context, writer batchWriter, opts Options) *Pool {
+// The pool deliberately takes no context: the only way to stop the
+// workers is Shutdown, which drains the queue first. A cancellable
+// context here once made the workers exit on SIGTERM while the hub was
+// still acknowledging messages, losing everything left in the queue.
+func NewPool(writer batchWriter, opts Options) *Pool {
 	if opts.Workers < 1 {
 		opts.Workers = 1
 	}
@@ -100,7 +102,7 @@ func NewPool(ctx context.Context, writer batchWriter, opts Options) *Pool {
 
 	for i := 0; i < opts.Workers; i++ {
 		p.wg.Add(1)
-		go p.worker(ctx, i)
+		go p.worker(i)
 	}
 
 	return p
@@ -155,8 +157,9 @@ func (p *Pool) Enqueue(ctx context.Context, msg models.Message) (<-chan models.M
 	}
 }
 
-// worker consumes the queue, batches and writes.
-func (p *Pool) worker(ctx context.Context, id int) {
+// worker consumes the queue, batches and writes. It returns only when
+// the queue is closed and fully drained.
+func (p *Pool) worker(id int) {
 	defer p.wg.Done()
 
 	ticker := time.NewTicker(p.flushEvery)
@@ -188,10 +191,6 @@ func (p *Pool) worker(ctx context.Context, id int) {
 
 		case <-ticker.C:
 			flush()
-
-		case <-ctx.Done():
-			flush()
-			return
 		}
 	}
 }
@@ -274,11 +273,6 @@ func (p *Pool) writeWithRetry(ctx context.Context, batch []models.Message) ([]mo
 	return nil, lastErr
 }
 
-// Shutdown stops accepting new messages and waits for the queue to drain.
-//
-// Closing the channel is what tells the workers to finish: each one
-// flushes its pending batch before returning, so a graceful shutdown
-// loses nothing that was accepted.
 // Shutdown stops accepting new messages and waits for the queue to drain.
 //
 // Closing the channel is what tells the workers to finish: each one

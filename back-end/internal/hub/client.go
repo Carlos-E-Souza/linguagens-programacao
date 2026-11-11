@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/coder/websocket"
 )
@@ -42,10 +41,10 @@ type Client struct {
 	sendMu sync.Mutex
 	closed bool
 
-	// typingMu guards lastTyping, which is per connection because the
-	// cooldown is about what the user is currently doing.
-	typingMu   sync.Mutex
-	lastTyping time.Time
+	// closeCode and closeReason are what the connection should be closed
+	// with, chosen by whoever closed the client first. Guarded by sendMu.
+	closeCode   websocket.StatusCode
+	closeReason string
 }
 
 // newClient builds a client with its own cancelable context.
@@ -98,10 +97,18 @@ func (c *Client) trySend(frame []byte) bool {
 	}
 }
 
-// close releases the client's resources. It is safe to call more than
-// once, which matters because several goroutines may decide the
-// connection is over at the same time.
+// close releases the client's resources with a normal close status. It is
+// safe to call more than once, which matters because several goroutines
+// may decide the connection is over at the same time.
 func (c *Client) close() {
+	c.closeWith(websocket.StatusNormalClosure, "connection closed")
+}
+
+// closeWith releases the client's resources and records the WebSocket
+// status the connection should be closed with. Only the first call wins:
+// a slow client closed with StatusPolicyViolation keeps that code even
+// though the regular unregister path calls close afterwards.
+func (c *Client) closeWith(code websocket.StatusCode, reason string) {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
 
@@ -109,6 +116,8 @@ func (c *Client) close() {
 		return
 	}
 	c.closed = true
+	c.closeCode = code
+	c.closeReason = reason
 
 	// Cancelling before closing lets anything blocked on the context give
 	// up; the close then lets the write goroutine drain and exit.
@@ -116,26 +125,17 @@ func (c *Client) close() {
 	close(c.send)
 }
 
-// allowTyping applies the per-user cooldown and reports whether a typing
-// event should be forwarded.
-//
-// Without this, a client could emit an event on every keystroke and turn
-// typing indicators into a broadcast flood.
-func (c *Client) allowTyping(cooldown time.Duration) bool {
-	if cooldown <= 0 {
-		return true
+// CloseStatus returns the status and reason the connection should be
+// closed with. A client that was never closed by the hub reports a normal
+// closure.
+func (c *Client) CloseStatus() (websocket.StatusCode, string) {
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+
+	if !c.closed {
+		return websocket.StatusNormalClosure, "connection closed"
 	}
-
-	c.typingMu.Lock()
-	defer c.typingMu.Unlock()
-
-	now := time.Now()
-	if now.Sub(c.lastTyping) < cooldown {
-		return false
-	}
-	c.lastTyping = now
-
-	return true
+	return c.closeCode, c.closeReason
 }
 
 // encodeFrame marshals an envelope into the bytes the writer sends.

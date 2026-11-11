@@ -86,7 +86,16 @@ func (s *Server) serveConnection(conn *websocket.Conn, userID int64) {
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		s.writeLoop(ctx, client)
+
+		if s.writeLoop(ctx, client) {
+			// The hub ended the connection (slow client, shutdown). The
+			// close handshake runs here, while the read loop is still
+			// reading, so the peer receives the close frame with the
+			// hub's status. Cancelling first would make the pending Read
+			// tear the socket down without any close frame.
+			code, reason := client.CloseStatus()
+			_ = conn.Close(code, reason)
+		}
 	}()
 
 	go func() {
@@ -100,7 +109,11 @@ func (s *Server) serveConnection(conn *websocket.Conn, userID int64) {
 	wg.Wait()
 
 	s.hub.Unregister(client)
-	_ = conn.Close(websocket.StatusNormalClosure, "connection closed")
+
+	// Any other ending (the peer closed, a failed ping or write) already
+	// broke the connection; release it without waiting for a handshake
+	// with a peer that may be gone.
+	_ = conn.CloseNow()
 }
 
 // readLoop decodes frames and hands them to the hub.
@@ -134,12 +147,14 @@ func (s *Server) readLoop(ctx context.Context, client *hub.Client) {
 	}
 }
 
-// writeLoop drains the outgoing queue and writes each frame.
+// writeLoop drains the outgoing queue and writes each frame. It reports
+// whether it stopped because the hub closed the client, as opposed to a
+// failed write or ping, or the read side ending.
 //
 // A single writer per connection is what makes the WebSocket safe:
 // coder/websocket allows only one concurrent writer, and serialising here
 // means the hub can hand frames over without coordinating.
-func (s *Server) writeLoop(ctx context.Context, client *hub.Client) {
+func (s *Server) writeLoop(ctx context.Context, client *hub.Client) (hubClosed bool) {
 	// One goroutine forwards the outgoing queue into a plain channel, so
 	// the loop below can select on frames and the heartbeat timer at the
 	// same time. Starting it once — rather than per frame — keeps the
@@ -168,7 +183,7 @@ func (s *Server) writeLoop(ctx context.Context, client *hub.Client) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return false
 
 		case <-ticker.C:
 			// The ping doubles as a liveness probe: if the peer is gone,
@@ -181,12 +196,14 @@ func (s *Server) writeLoop(ctx context.Context, client *hub.Client) {
 			if err != nil {
 				slog.Debug("websocket heartbeat failed",
 					"user_id", client.UserID(), "error", err)
-				return
+				return false
 			}
 
 		case frame, ok := <-frames:
 			if !ok {
-				return
+				// The queue is closed while the connection's own
+				// context is alive: the hub closed this client.
+				return ctx.Err() == nil
 			}
 
 			writeCtx, cancel := context.WithTimeout(ctx, writeTimeout)
@@ -195,7 +212,7 @@ func (s *Server) writeLoop(ctx context.Context, client *hub.Client) {
 
 			if err != nil {
 				slog.Debug("websocket write ended", "user_id", client.UserID(), "error", err)
-				return
+				return false
 			}
 		}
 	}

@@ -200,3 +200,34 @@ func TestWebSocketUnavailableWithoutHub(t *testing.T) {
 		t.Errorf("status: got %d, want %d (%s)", got, want, rec.Body)
 	}
 }
+
+// TestRemoveMemberNotifiesTheRemovedUser checks the removed user is named
+// in the notification: they are no longer a member, so the hub would not
+// otherwise send them the update.
+func TestRemoveMemberNotifiesTheRemovedUser(t *testing.T) {
+	f := newFixture(t)
+	hubStub := newStubHub()
+	f.server.SetHub(hubStub)
+
+	f.register("alice")
+	bob := f.register("bob")
+	token := f.login("alice")
+
+	rec := f.do(http.MethodPost, "/api/conversations", token, createConversationRequest{
+		Type: models.ConversationGroup, Name: "team", Members: []int64{bob.ID},
+	})
+	var conv models.Conversation
+	_ = json.Unmarshal(rec.Body.Bytes(), &conv)
+
+	rec = f.do(http.MethodDelete,
+		"/api/conversations/"+itoa(conv.ID)+"/members/"+itoa(bob.ID), token, nil)
+	if got, want := rec.Code, http.StatusOK; got != want {
+		t.Fatalf("status: got %d, want %d (%s)", got, want, rec.Body)
+	}
+
+	notes := hubStub.Notifications()
+	last := notes[len(notes)-1]
+	if len(last.UserIDs) != 1 || last.UserIDs[0] != bob.ID {
+		t.Errorf("notification extra recipients: got %v, want [%d]", last.UserIDs, bob.ID)
+	}
+}
