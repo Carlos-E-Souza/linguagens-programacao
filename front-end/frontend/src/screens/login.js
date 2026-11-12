@@ -95,7 +95,7 @@ export function createLoginScreen(props) {
     id: 'username',
     label: 'Nome de usuário',
     autocomplete: 'username',
-    hint: '3 a 32 letras, números ou _. Letras maiúsculas são salvas em minúsculas.',
+    hint: '3 a 32 letras sem acento, números ou _. Maiúsculas viram minúsculas.',
   });
   username.input.addEventListener('blur', () => {
     if (mode === 'register') {

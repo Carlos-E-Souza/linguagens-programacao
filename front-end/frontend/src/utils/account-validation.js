@@ -10,7 +10,7 @@ export function normalizedUsername(value) {
 export function usernameError(value) {
   const username = normalizedUsername(value);
   if (!username) return 'Informe o nome de usuário.';
-  if (!USERNAME_PATTERN.test(username)) return 'Use de 3 a 32 letras, números ou _.';
+  if (!USERNAME_PATTERN.test(username)) return 'Use de 3 a 32 letras sem acento, números ou _.';
   return '';
 }
 
