@@ -119,7 +119,7 @@ export function createLoginScreen(props) {
     label: 'Senha',
     type: 'password',
     autocomplete: 'current-password',
-    hint: 'Pelo menos 8 caracteres e no máximo 72 bytes.',
+    hint: 'De 8 a 72 bytes. Acentos podem ocupar mais de um byte.',
   });
   password.input.addEventListener('blur', () => {
     if (mode === 'register') validatePassword();

@@ -25,12 +25,13 @@ test('nome de exibição respeita o limite de 64 bytes do servidor', () => {
   assert.equal(displayNameError('  '), 'Informe como você quer aparecer.');
 });
 
-test('senha exige 8 caracteres e respeita o máximo de 72 bytes do servidor', () => {
+test('senha exige entre 8 e 72 bytes como o servidor', () => {
   assert.equal(passwordError('senha123'), '');
   assert.equal(passwordError('a'.repeat(72)), '');
   assert.equal(passwordError('a'.repeat(73)), 'A senha deve ter no máximo 72 bytes.');
   assert.equal(passwordError('á'.repeat(8)), '');
-  assert.equal(passwordError('á'.repeat(4)), 'A senha precisa de pelo menos 8 caracteres.');
-  assert.equal(passwordError('short'), 'A senha precisa de pelo menos 8 caracteres.');
+  assert.equal(passwordError('á'.repeat(4)), '');
+  assert.equal(passwordError('á'.repeat(3)), 'A senha precisa de pelo menos 8 bytes.');
+  assert.equal(passwordError('short'), 'A senha precisa de pelo menos 8 bytes.');
   assert.equal(passwordError(''), 'Informe a senha.');
 });
