@@ -64,6 +64,9 @@ type session struct {
 	syncFrom       map[int64]int64
 	syncMessages   []api.Message
 
+	refreshMu           sync.Mutex
+	refreshRetryPending bool
+
 	// fillGap usa estes campos para não buscar o mesmo buraco duas vezes ao mesmo tempo.
 	gapMu      sync.Mutex
 	gapFilling map[int64]bool
@@ -216,16 +219,43 @@ func (a *App) ListConversations() ([]api.Conversation, error) {
 }
 
 func (a *App) refreshConversations(s *session, cached []api.Conversation) {
-	fresh, err := a.api.ListConversations(s.ctx)
+	_, removed, err := a.fetchConversations(s)
 	if err != nil {
+		if errors.Is(err, errStaleConversations) && a.isCurrent(s) {
+			s.refreshMu.Lock()
+			if s.refreshRetryPending {
+				s.refreshMu.Unlock()
+				return
+			}
+			s.refreshRetryPending = true
+			s.refreshMu.Unlock()
+			go func() {
+				clearPending := func() {
+					s.refreshMu.Lock()
+					s.refreshRetryPending = false
+					s.refreshMu.Unlock()
+				}
+				timer := time.NewTimer(200 * time.Millisecond)
+				defer timer.Stop()
+				select {
+				case <-s.ctx.Done():
+					clearPending()
+					return
+				case <-timer.C:
+					clearPending()
+					if a.isCurrent(s) {
+						cached, err := s.cache.ListConversations(s.ctx)
+						if err == nil {
+							a.refreshConversations(s, cached)
+						}
+					}
+				}
+			}()
+			return
+		}
 		if !errors.Is(err, api.ErrNetwork) && s.ctx.Err() == nil {
 			log.Printf("atualizar conversas: %v", err)
 		}
-		return
-	}
-	removed, err := s.cache.ReplaceConversations(s.ctx, fresh)
-	if err != nil {
-		log.Printf("salvar conversas: %v", err)
 		return
 	}
 	saved, err := s.cache.ListConversations(s.ctx)
@@ -238,12 +268,41 @@ func (a *App) refreshConversations(s *session, cached []api.Conversation) {
 	}
 	for _, conv := range saved {
 		if before[conv.ID] != fingerprint(conv) {
-			a.emit(events.ConversationUpdated, conv)
+			// Outro evento pode ter mudado esta conversa depois da lista acima.
+			a.emitConversation(s, conv.ID)
 		}
 	}
 	for _, id := range removed {
-		a.emit(events.ConversationRemoved, events.ConversationRemovedPayload{ConversationID: id})
+		if _, exists, err := s.cache.GetConversation(s.ctx, id); err == nil && !exists && a.isCurrent(s) {
+			a.emit(events.ConversationRemoved, events.ConversationRemovedPayload{ConversationID: id})
+		}
 	}
+}
+
+var errStaleConversations = errors.New("a lista mudou durante a atualização")
+
+// fetchConversations repete a busca se um evento alterou o cache enquanto o
+// servidor preparava a resposta. Assim uma lista antiga não apaga uma conversa
+// recém-criada nem regride presença, não lidas ou membros.
+func (a *App) fetchConversations(s *session) ([]api.Conversation, []int64, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		revision := s.cache.Revision()
+		fresh, err := a.api.ListConversations(s.ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := s.ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		removed, applied, err := s.cache.ReplaceConversationsIfCurrent(s.ctx, fresh, revision)
+		if err != nil {
+			return nil, nil, err
+		}
+		if applied {
+			return fresh, removed, nil
+		}
+	}
+	return nil, nil, errStaleConversations
 }
 
 // LoadMessages devolve uma página do histórico em ordem crescente, com sequência menor que before (0 = mais

@@ -132,6 +132,12 @@ func (c *Cache) SaveReceived(ctx context.Context, messages []api.Message, userID
 
 // SetPresence atualiza o indicador online do usuário em todas as conversas.
 func (c *Cache) SetPresence(ctx context.Context, userID int64, online bool) error {
+	c.changeMu.Lock()
+	defer c.changeMu.Unlock()
 	_, err := c.db.ExecContext(ctx, `UPDATE members SET online = ? WHERE user_id = ?`, online, userID)
-	return wrap("atualizar presença", err)
+	if err != nil {
+		return wrap("atualizar presença", err)
+	}
+	c.revision++
+	return nil
 }

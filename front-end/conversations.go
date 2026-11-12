@@ -172,16 +172,13 @@ func (a *App) handleConversationUpdated(s *session, data json.RawMessage) {
 		a.forgetConversation(s, conv.ID)
 		return
 	}
-	existed, err := s.cache.ApplyConversationUpdate(s.ctx, conv)
+	_, err := s.cache.ApplyConversationUpdate(s.ctx, conv)
 	if err != nil {
 		log.Printf("%v", err)
 		return
 	}
 	a.emitConversation(s, conv.ID)
-	if !existed {
-		// A lista REST traz a presença atual dos membros, inclusive quando a
-		// conversa ainda não tem mensagens. O evento não inclui essa presença.
-		// Ela também traz as não lidas e a última mensagem de grupos antigos.
-		a.refreshConversation(s)
-	}
+	// O evento não inclui presença. A lista REST informa se membros novos já
+	// estavam online, inclusive em conversas vazias e grupos existentes.
+	a.refreshConversation(s)
 }
