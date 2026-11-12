@@ -140,9 +140,44 @@ cd front-end
 XDG_CONFIG_HOME=/tmp/chat-b SERVER_URL=http://localhost:8080 ./build/bin/chat-client
 ```
 
-No Windows (PowerShell), troque `XDG_CONFIG_HOME=...` por `$env:APPDATA = 'C:\temp\chat-a'` (e `chat-b` na outra
-janela) e rode `.\build\bin\chat-client.exe`. Confirme que `http://localhost:8080/api/health` responde antes de
-abrir os clientes.
+### Dois clientes no Windows (PowerShell)
+
+Abra a pasta raiz do repositório no Explorador de Arquivos. Clique na barra de endereço, digite `powershell` e
+pressione Enter. Esse é o terminal do servidor; execute:
+
+```powershell
+Set-Location .\back-end
+$env:DEV_MODE = 'true'
+$env:DATABASE_PATH = '.\chat-teste.db'
+go run ./cmd/server
+```
+
+Deixe esse terminal aberto. Abra outro PowerShell na pasta raiz do repositório pelo mesmo procedimento. Confira se
+`http://localhost:8080/api/health` responde e gere o executável:
+
+```powershell
+Invoke-WebRequest 'http://localhost:8080/api/health' -UseBasicParsing
+Set-Location .\front-end
+wails build
+$env:APPDATA = Join-Path $env:TEMP 'chat-teste-a'
+$env:SERVER_URL = 'http://localhost:8080'
+& '.\build\bin\chat-client.exe'
+```
+
+A primeira janela **Chat** deve abrir na tela de login (ou na sessão salva, se você já usou essa pasta). Deixe o
+segundo PowerShell aberto. Abra um terceiro PowerShell na pasta raiz do repositório e execute:
+
+```powershell
+Set-Location .\front-end
+$env:APPDATA = Join-Path $env:TEMP 'chat-teste-b'
+$env:SERVER_URL = 'http://localhost:8080'
+& '.\build\bin\chat-client.exe'
+```
+
+Agora devem existir duas janelas **Chat** independentes. `APPDATA` diferente em cada terminal separa o cache e a
+sessão das contas; cada janela pode entrar com um usuário diferente. Mantenha os três terminais abertos durante o
+teste. Se precisar de uma terceira conta para testar adicionar e remover membros, abra mais um PowerShell na raiz e
+repita o último bloco com `chat-teste-c`.
 
 ### Roteiro de teste manual
 
