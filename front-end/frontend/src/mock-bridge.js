@@ -253,6 +253,18 @@ export function createMockBridge() {
       const upper = before || Infinity;
       return structuredClone(all.filter((m) => m.sequence < upper).slice(-50));
     },
+    async SearchMessages(conversationId, term, before) {
+      await delay(250);
+      const needle = String(term ?? '').trim().toLowerCase();
+      if (needle.length < 2) throw 'Digite de 2 a 100 caracteres para buscar.';
+      const upper = before || Infinity;
+      return structuredClone(
+        (histories[conversationId] ?? [])
+          .filter((m) => m.sequence < upper && m.body.toLowerCase().includes(needle))
+          .reverse()
+          .slice(0, 20),
+      );
+    },
     async SendMessage(conversationId, body) {
       const text = body.trim();
       if (!text) throw 'Escreva uma mensagem antes de enviar.';
