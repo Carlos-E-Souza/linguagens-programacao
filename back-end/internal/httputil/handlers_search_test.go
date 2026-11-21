@@ -1,9 +1,15 @@
 package httputil
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
 func testNormalizeSearchTerm(t testing.T) {
@@ -39,5 +45,72 @@ func testNormalizeSearchTerm(t testing.T) {
 			}
 		})
 
+	}
+
+}
+
+func TestSearchMessagesEndpoint(t *testing.T) {
+	f := newFixture(t)
+	alice := f.register("alice")
+	bob := f.register("bob")
+	f.register("eve")
+	aliceToken := f.login("alice")
+	eveToken := f.login("eve")
+
+	rec := f.do(http.MethodPost, "/api/conversations", aliceToken, createConversationRequest{
+		Type: models.ConversationDirect, Members: []int64{bob.ID},
+	})
+	var conv models.Conversation
+	if err := json.Unmarshal(rec.Body.Bytes(), &conv); err != nil {
+		t.Fatalf("decode conversation: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if _, err := f.store.InsertMessages(context.Background(), []models.Message{
+		{ConversationID: conv.ID, Sequence: 1, SenderID: alice.ID, ClientID: "c1", Body: "Bom dia", CreatedAt: now},
+		{ConversationID: conv.ID, Sequence: 2, SenderID: bob.ID, ClientID: "c2", Body: "Reunião às 15h", CreatedAt: now},
+		{ConversationID: conv.ID, Sequence: 3, SenderID: alice.ID, ClientID: "c3", Body: "reunião adiada", CreatedAt: now},
+	}); err != nil {
+		t.Fatalf("InsertMessages() failed: %v", err)
+	}
+
+	path := "/api/conversations/" + itoa(conv.ID) + "/messages/search"
+
+	rec = f.do(http.MethodGet, path+"?q=reuni%C3%A3o", aliceToken, nil)
+	if got, want := rec.Code, http.StatusOK; got != want {
+		t.Fatalf("status: got %d, want %d (%s)", got, want, rec.Body)
+	}
+	var found []models.Message
+	if err := json.Unmarshal(rec.Body.Bytes(), &found); err != nil {
+		t.Fatalf("decode results: %v", err)
+	}
+	if len(found) != 2 || found[0].Sequence != 3 || found[1].Sequence != 2 {
+		t.Errorf("results = %+v, want sequences [3 2]", found)
+	}
+
+	// An empty result is "[]", never "null": the client iterates over it.
+	rec = f.do(http.MethodGet, path+"?q=zzzz", aliceToken, nil)
+	if got := rec.Body.String(); got != "[]\n" && got != "[]" {
+		t.Errorf("empty result body = %q, want []", got)
+	}
+
+	// A non-member must not learn the conversation exists.
+	rec = f.do(http.MethodGet, path+"?q=reuni%C3%A3o", eveToken, nil)
+	if got, want := rec.Code, http.StatusNotFound; got != want {
+		t.Errorf("non-member status: got %d, want %d", got, want)
+	}
+
+	// Bad input is a client error.
+	for _, query := range []string{"", "?q=a", "?q=%20%20", "?q=oi&before=abc", "?q=oi&limit=-1"} {
+		rec = f.do(http.MethodGet, path+query, aliceToken, nil)
+		if got, want := rec.Code, http.StatusBadRequest; got != want {
+			t.Errorf("query %q status: got %d, want %d (%s)", query, got, want, rec.Body)
+		}
+	}
+
+	// A limit above the maximum is clamped, not honoured.
+	rec = f.do(http.MethodGet, path+"?q=oi&limit=99999", aliceToken, nil)
+	if got, want := rec.Code, http.StatusOK; got != want {
+		t.Errorf("clamped limit status: got %d, want %d (%s)", got, want, rec.Body)
 	}
 }
