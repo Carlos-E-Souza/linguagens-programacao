@@ -149,6 +149,35 @@ func (s *Store) ListMessagesAfter(ctx context.Context, conversationID, afterSequ
 	return scanMessages(rows)
 }
 
+// SearchMessages returns up to limit messages of one conversation whose body
+// contains term, newest first, optionally older than beforeSequence.
+//
+// Unlike ListMessages it does not reverse the page: a list of search
+// results reads best with the most recent hit on top, and the next page is
+// requested with before = the smallest sequence received. The term is bound
+// as a parameter and its LIKE wildcards are escaped, so it is always
+// literal text. SQLite's LIKE ignores case for ASCII only.
+func (s *Store) SearchMessages(ctx context.Context, conversationID int64, term string, beforeSequence int64, limit int) ([]models.Message, error) {
+	pattern := "%" + escapeLike(term) + "%"
+
+	query := `
+		SELECT ` + messageColumns + `
+		FROM messages
+		WHERE conversation_id = ?
+		  AND body LIKE ? ESCAPE '\'
+		  AND (? = 0 OR sequence < ?)
+		ORDER BY sequence DESC
+		LIMIT ?`
+
+	rows, err := s.db.QueryContext(ctx, query, conversationID, pattern, beforeSequence, beforeSequence, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search messages: %w", err)
+	}
+	defer rows.Close()
+
+	return scanMessages(rows)
+}
+
 // MarkDelivered advances the member's delivered watermark.
 //
 // MAX(current, new) makes the update monotonic: an out-of-order
