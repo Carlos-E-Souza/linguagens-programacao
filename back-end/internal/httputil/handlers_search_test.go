@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func testNormalizeSearchTerm(t *testing.T) {
+func testNormalizeSearchTerm(t testing.T) {
 	cases := []struct {
 		name      string
 		raw       string
@@ -32,12 +32,12 @@ func testNormalizeSearchTerm(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := normalizeSearchTerm(tc.raw)
 			if !errors.Is(err, tc.wantError) {
-				t.Fatalf("normalizeSearchTerm(%q) error  = %v, want %v", tc.raw, err, tc.wantError)
+				t.Fatalf("normalizeSearchTerm(%q) error = %v, want %v", tc.raw, err, tc.wantError)
 			}
 			if got != tc.want {
-				t.Errorf("normalizeSearcTerm(%q) = %q, want %q", tc.raw, got, tc.want)
+				t.Errorf("normalizeSearchTerm(%q) = %q, want %q", tc.raw, got, tc.want)
 			}
-
 		})
+
 	}
 }
