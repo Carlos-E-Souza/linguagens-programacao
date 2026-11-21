@@ -287,6 +287,15 @@ export async function searchUsers(term) {
   }
 }
 
+/** Busca mensagens de uma conversa no servidor, da mais nova para a mais antiga. before = 0 pede as mais recentes. */
+export async function searchMessages(conversationId, term, before = 0) {
+  try {
+    return await bridge.searchMessages(conversationId, term, before);
+  } catch (error) {
+    throw new Error(errorMessage(error));
+  }
+}
+
 /** Abre a conversa individual com a pessoa, criando-a se preciso. */
 export async function startDirectConversation(userId) {
   await enterConversation(() => bridge.createDirectConversation(userId));
