@@ -191,9 +191,13 @@ func TestUnresponsiveClientIsRemoved(t *testing.T) {
 	defer bobConn.CloseNow()
 	f.waitOnline(bob.ID, true, time.Second)
 
-	// Bob reads, so his own pings are answered and he stays connected.
-	if p := readPresence(t, bobConn, alice.ID, 2*time.Second); p.Online {
-		t.Error("expected an offline presence for the silent client")
+	// Bob keeps reading, so his own pings are answered and he stays
+	// connected. An "online" presence for alice may arrive first (the hub
+	// announces it asynchronously), so read until the "offline" one.
+	for {
+		if p := readPresence(t, bobConn, alice.ID, 2*time.Second); !p.Online {
+			break
+		}
 	}
 	f.waitOnline(alice.ID, false, time.Second)
 
