@@ -126,6 +126,7 @@ func (s *Server) Routes() http.Handler {
 	protected.HandleFunc("POST /api/conversations/{id}/members", s.handleAddMembers)
 	protected.HandleFunc("DELETE /api/conversations/{id}/members/{userId}", s.handleRemoveMember)
 	protected.HandleFunc("GET /api/conversations/{id}/messages", s.handleListMessages)
+	protected.HandleFunc("GET /api/conversations/{id}/messages/search", s.handleSearchMessages)
 
 	mux.Handle("/api/users", s.authenticate(protected))
 	mux.Handle("/api/users/", s.authenticate(protected))

@@ -2,6 +2,7 @@ package httputil
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"unicode/utf8"
 )
@@ -9,6 +10,12 @@ import (
 const (
 	minSearchTermRunes = 2
 	maxSearchTermRunes = 100
+)
+
+// defaultSearchPage and maxSearchPage bound a page of search results.
+const (
+	defaultSearchPage = 20
+	maxSearchPage     = 50
 )
 
 var (
@@ -43,4 +50,54 @@ func normalizeSearchTerm(raw string) (string, error) {
 
 	return term, nil
 
+}
+
+// handleSearchMessages answers GET /api/conversations/{id}/messages/search?q=<term>.
+//
+// Membership is checked before anything else, exactly like
+// handleListMessages, so a non-member gets the same 404 as for a missing
+// conversation. Results are newest first; "before" is the sequence cursor.
+func (s *Server) handleSearchMessages(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.currentUser(w, r)
+	if !ok {
+		return
+	}
+
+	conv, ok := s.requireMembership(w, r, userID)
+	if !ok {
+		return
+	}
+
+	term, err := normalizeSearchTerm(r.URL.Query().Get("q"))
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid_term", err.Error())
+		return
+	}
+
+	before, err := queryInt64(r, "before", 0)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid_before", "before must be a non-negative integer")
+		return
+	}
+
+	limit, err := queryInt(r, "limit", defaultSearchPage)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "invalid_limit", "limit must be a positive integer")
+		return
+	}
+	if limit > maxSearchPage {
+		limit = maxSearchPage
+	}
+	if limit < 1 {
+		limit = defaultSearchPage
+	}
+
+	messages, err := s.store.SearchMessages(r.Context(), conv.ID, term, before, limit)
+	if err != nil {
+		logRequestError(r, "search_messages", err)
+		WriteError(w, http.StatusInternalServerError, "internal_error", "could not search messages")
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, messages)
 }
