@@ -12,7 +12,7 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-func testNormalizeSearchTerm(t testing.T) {
+func testNormalizeSearchTerm(t *testing.T) {
 	cases := []struct {
 		name      string
 		raw       string
