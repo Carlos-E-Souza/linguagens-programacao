@@ -49,9 +49,31 @@ diretório do próprio pacote, então as migrações precisam morar ao lado do c
 | POST   | `/api/conversations/{id}/members`          | Adiciona membros a um grupo                      |
 | DELETE | `/api/conversations/{id}/members/{userId}` | Remove membro ou sai do grupo                    |
 | GET    | `/api/conversations/{id}/messages`         | Histórico paginado de mensagens                  |
+| GET    | `/api/conversations/{id}/messages/search`  | Busca mensagens da conversa por trecho de texto  |
 | GET    | `/ws`                                      | Abre a conexão WebSocket autenticada             |
 
 Os parâmetros de query e os campos JSON de cada endpoint estão detalhados em [`PLANO.md`](PLANO.md).
+
+### Busca de mensagens
+
+`GET /api/conversations/{id}/messages/search?q=<termo>` devolve as mensagens da conversa cujo texto contém o termo,
+da **mais nova para a mais antiga**, em um array JSON (`[]` quando nada é encontrado). Exige token e que o usuário seja
+membro da conversa; quem não é membro recebe `404`, igual ao histórico.
+
+| Parâmetro | Obrigatório | Descrição                                                                              |
+|-----------|-------------|----------------------------------------------------------------------------------------|
+| `q`       | sim         | Trecho procurado. De 2 a 100 caracteres, depois de aparar e juntar espaços repetidos    |
+| `before`  | não         | Cursor: só mensagens com `sequence` menor que este valor. Padrão `0` (sem cursor)       |
+| `limit`   | não         | Tamanho da página. Padrão 20, máximo 50                                                 |
+
+Para a página seguinte, repita a chamada com `before` igual à **menor** `sequence` recebida; uma página com `limit`
+itens indica que pode haver mais. Termo inválido (vazio, com 1 caractere, longo demais ou UTF-8 inválido) responde
+`400` com código `invalid_term`; `before` ou `limit` malformados respondem `400` com `invalid_before` ou `invalid_limit`.
+
+Limites conhecidos: o `LIKE` do SQLite ignora maiúsculas **só em ASCII** (`reunião` acha `Reunião`, mas não `REUNIÃO`),
+não ignora acentos (`reuniao` não acha `reunião`) e varre as mensagens da conversa, sem índice de texto. Os caracteres
+`%`, `_` e `\` do termo são tratados como texto literal. Uma evolução possível é uma coluna normalizada ou uma tabela
+FTS5 em uma nova migração.
 
 ## Configuração
 
@@ -172,3 +194,11 @@ identificador aparece. Para a tabela completa de renomeações (português → i
 | `client_id`              | coluna / payload  | `messages` / `message.send`   | UUID gerado no cliente; evita duplicatas              |
 | `sequence`               | coluna / payload  | `messages` / `message.ack`    | Ordem da mensagem dentro da conversa                  |
 | `body`                   | coluna / payload  | `messages` / `message.send`   | Conteúdo textual da mensagem                          |
+| `normalizeSearchTerm`    | função            | `internal/httputil/handlers_search.go` | Apara, junta espaços e valida o termo de busca (2 a 100 caracteres) |
+| `handleSearchMessages`   | método            | `internal/httputil/handlers_search.go` | Atende `GET /api/conversations/{id}/messages/search`  |
+| `minSearchTermRunes`     | constante         | `internal/httputil/handlers_search.go` | Menor termo aceito: 2 caracteres                      |
+| `maxSearchTermRunes`     | constante         | `internal/httputil/handlers_search.go` | Maior termo aceito: 100 caracteres                    |
+| `defaultSearchPage`      | constante         | `internal/httputil/handlers_search.go` | Resultados por página quando `limit` não é enviado (20) |
+| `maxSearchPage`          | constante         | `internal/httputil/handlers_search.go` | Teto de `limit` na busca (50)                         |
+| `errSearchTerm*`         | variáveis         | `internal/httputil/handlers_search.go` | Erros de validação do termo; viram `400 invalid_term`  |
+| `SearchMessages`         | método de `Store` | `internal/db/messages.go`     | Mensagens de uma conversa que contêm o termo (`LIKE`), da mais nova à mais antiga |

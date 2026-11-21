@@ -32,11 +32,12 @@ Responsável por autenticação, gerenciamento de usuários e conversas, roteame
 | POST   | `/api/conversations/{id}/members`          | Adiciona membros a um grupo                             |
 | DELETE | `/api/conversations/{id}/members/{userId}` | Remove membro ou sai do grupo                           |
 | GET    | `/api/conversations/{id}/messages`         | Histórico paginado de mensagens                         |
+| GET    | `/api/conversations/{id}/messages/search`  | Busca mensagens da conversa por trecho de texto         |
 | GET    | `/ws`                                      | Abre a conexão WebSocket autenticada                    |
 
 ### Aplicação 2: Cliente Desktop (Wails + Vite + Vanilla JS)
 
-A camada Go do Wails mantém a conexão WebSocket com o servidor, cuida da reconexão automática, da fila de mensagens pendentes e do cache local, e repassa os eventos para a interface por meio do sistema de eventos do Wails (`runtime.EventsEmit`). A interface, em HTML, CSS e JavaScript puros, exibe a lista de conversas, a janela de chat, a criação de grupos, os indicadores de presença (online/offline), “digitando...” e o status de cada mensagem (enviada, entregue, lida).
+A camada Go do Wails mantém a conexão WebSocket com o servidor, cuida da reconexão automática, da fila de mensagens pendentes e do cache local, e repassa os eventos para a interface por meio do sistema de eventos do Wails (`runtime.EventsEmit`). A interface, em HTML, CSS e JavaScript puros, exibe a lista de conversas, a janela de chat, a busca de mensagens dentro da conversa, a criação de grupos, os indicadores de presença (online/offline), “digitando...” e o status de cada mensagem (enviada, entregue, lida).
 
 ## Convenção de nomes
 
