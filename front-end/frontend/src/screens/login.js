@@ -2,10 +2,7 @@ import { login, register } from '../actions.js';
 import { errorMessage } from '../bridge.js';
 import { h, setText, toggleClass } from '../utils/dom.js';
 import { icon } from '../utils/icons.js';
-
-// Mesmas regras do servidor (back-end/PLANO.md, Fase 2), para avisar antes de enviar.
-const USERNAME_PATTERN = /^[a-z0-9_]{3,32}$/;
-const PASSWORD_MIN = 8;
+import { displayNameError, normalizedUsername, passwordError, usernameError } from '../utils/account-validation.js';
 
 const modes = {
   login: {
@@ -98,20 +95,36 @@ export function createLoginScreen(props) {
     id: 'username',
     label: 'Nome de usuário',
     autocomplete: 'username',
-    hint: '3 a 32 caracteres: letras minúsculas, números ou _.',
+    hint: '3 a 32 letras sem acento, números ou _. Maiúsculas viram minúsculas.',
   });
   username.input.addEventListener('blur', () => {
-    if (mode === 'register') validateUsername();
+    if (mode === 'register') {
+      username.input.value = normalizedUsername(username.value());
+      validateUsername();
+    }
   });
   username.input.addEventListener('input', () => username.setError(''));
-  const displayName = createField({ id: 'display-name', label: 'Nome de exibição', autocomplete: 'name' });
+  const displayName = createField({
+    id: 'display-name',
+    label: 'Nome de exibição',
+    autocomplete: 'name',
+    hint: 'Até 64 bytes; acentos podem ocupar mais de um byte.',
+  });
+  displayName.input.addEventListener('blur', () => {
+    if (mode === 'register') validateDisplayName();
+  });
+  displayName.input.addEventListener('input', () => displayName.setError(''));
   const password = createField({
     id: 'password',
     label: 'Senha',
     type: 'password',
     autocomplete: 'current-password',
-    hint: `Pelo menos ${PASSWORD_MIN} caracteres.`,
+    hint: 'De 8 a 72 bytes. Acentos podem ocupar mais de um byte.',
   });
+  password.input.addEventListener('blur', () => {
+    if (mode === 'register') validatePassword();
+  });
+  password.input.addEventListener('input', () => password.setError(''));
 
   const title = h('h1', { class: 'login__title', id: 'login-title' });
   const subtitle = h('p', { class: 'login__subtitle' });
@@ -157,6 +170,7 @@ export function createLoginScreen(props) {
     setText(switchText, copy.switchText);
     setText(switchButton, copy.switchAction);
     displayName.el.hidden = !registering;
+    displayName.el.querySelector('.field__hint').hidden = !registering;
     username.el.querySelector('.field__hint').hidden = !registering;
     password.el.querySelector('.field__hint').hidden = !registering;
     password.input.autocomplete = registering ? 'new-password' : 'current-password';
@@ -187,34 +201,33 @@ export function createLoginScreen(props) {
   }
 
   function validateUsername() {
-    const user = username.value().trim();
-    if (!user) {
-      username.setError('Informe o nome de usuário.');
-      return false;
-    }
-    if (mode === 'register' && !USERNAME_PATTERN.test(user)) {
-      username.setError('Use de 3 a 32 letras minúsculas, números ou _.');
-      return false;
-    }
-    username.setError('');
-    return true;
+    let error = '';
+    if (mode === 'register') error = usernameError(username.value());
+    else if (!username.value().trim()) error = 'Informe o nome de usuário.';
+    username.setError(error);
+    return !error;
+  }
+
+  function validateDisplayName() {
+    const error = displayNameError(displayName.value());
+    displayName.setError(error);
+    return !error;
+  }
+
+  function validatePassword() {
+    let error = '';
+    if (mode === 'register') error = passwordError(password.value());
+    else if (!password.value()) error = 'Informe a senha.';
+    password.setError(error);
+    return !error;
   }
 
   /** Validação local; devolve o primeiro campo inválido para receber o foco. */
   function validate() {
     const invalid = [];
     if (!validateUsername()) invalid.push(username);
-    if (mode === 'register' && !displayName.value().trim()) {
-      displayName.setError('Informe como você quer aparecer.');
-      invalid.push(displayName);
-    }
-    if (!password.value()) {
-      password.setError('Informe a senha.');
-      invalid.push(password);
-    } else if (mode === 'register' && password.value().length < PASSWORD_MIN) {
-      password.setError(`A senha precisa de pelo menos ${PASSWORD_MIN} caracteres.`);
-      invalid.push(password);
-    }
+    if (mode === 'register' && !validateDisplayName()) invalid.push(displayName);
+    if (!validatePassword()) invalid.push(password);
     return invalid[0] ?? null;
   }
 
@@ -230,7 +243,7 @@ export function createLoginScreen(props) {
     busy = true;
     render();
     try {
-      const user = username.value().trim();
+      const user = normalizedUsername(username.value());
       if (mode === 'register') await register(user, displayName.value().trim(), password.value());
       else await login(user, password.value());
       // Sucesso: o store troca para a tela de chat e esta tela é desmontada.

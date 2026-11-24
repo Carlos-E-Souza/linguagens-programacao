@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Carlos-E-Souza/linguagens-programacao/front-end/internal/api"
@@ -100,6 +101,90 @@ func TestCompleteSyncStoresOfflineMessagesAndAdvancesCursor(t *testing.T) {
 	if err != nil || cursor != 3 {
 		t.Fatalf("cursor = %d, erro = %v", cursor, err)
 	}
+}
+
+func TestCompleteSyncRetriesStaleListBeforeAdvancingCursor(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c, err := cache.Open(filepath.Join(t.TempDir(), "cliente.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	first := api.Message{ID: 1, ConversationID: 1, Sequence: 1, SenderID: 2, ClientID: "1", Body: "um"}
+	base := api.Conversation{ID: 1, Type: api.ConversationDirect, LastSequence: 1,
+		LastMessage: &first, Members: []api.Member{{UserID: 1}, {UserID: 2}}}
+	if err := c.SaveConversations(ctx, []api.Conversation{base}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SaveSyncCursor(ctx, 1, 1); err != nil {
+		t.Fatal(err)
+	}
+	remoteMessage := api.Message{ID: 4, ConversationID: 2, Sequence: 1,
+		SenderID: 3, ClientID: "4", Body: "novo"}
+	remote := api.Conversation{ID: 2, Type: api.ConversationDirect, LastSequence: 1,
+		UnreadCount: 1, LastMessage: &remoteMessage,
+		Members: []api.Member{{UserID: 1}, {UserID: 3, Online: true}}}
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/conversations" {
+			if calls.Add(1) <= 3 {
+				// Um evento WebSocket durante cada GET torna a resposta velha.
+				c.SetPresence(ctx, 2, true)
+			}
+			fresh := base
+			fresh.LastSequence = 3
+			fresh.UnreadCount = 2
+			fresh.Members = []api.Member{{UserID: 1}, {UserID: 2, Online: true}}
+			json.NewEncoder(w).Encode([]api.Conversation{fresh, remote})
+			return
+		}
+		if r.URL.Path == "/api/conversations/2/messages" {
+			json.NewEncoder(w).Encode([]api.Message{remoteMessage})
+			return
+		}
+		json.NewEncoder(w).Encode([]api.Message{
+			first,
+			{ID: 2, ConversationID: 1, Sequence: 2, SenderID: 2, ClientID: "2", Body: "dois"},
+			{ID: 3, ConversationID: 1, Sequence: 3, SenderID: 2, ClientID: "3", Body: "tres"},
+		})
+	}))
+	t.Cleanup(server.Close)
+	s := &session{ctx: ctx, cache: c, user: api.User{ID: 1}, syncGeneration: 1}
+	s.queue = queue.New(c, func(api.Message) error { return nil }, queue.Options{})
+	a := &App{api: api.NewClient(server.URL), session: s, emit: func(string, ...any) {}}
+	a.completeSync(s, 1, map[int64]int64{1: 1}, nil)
+	cursor, err := c.SyncCursor(ctx, 1)
+	if err != nil || cursor != 1 || calls.Load() != 3 {
+		t.Fatalf("antes da nova tentativa: cursor=%d buscas=%d erro=%v", cursor, calls.Load(), err)
+	}
+	if _, exists, err := c.GetConversation(ctx, 2); err != nil || exists {
+		t.Fatalf("conversa remota aplicada antes da lista estável: presente=%v erro=%v", exists, err)
+	}
+	waitFor(t, func() bool {
+		cursor, err := c.SyncCursor(ctx, 1)
+		if err != nil || cursor != 3 {
+			return false
+		}
+		conv, ok, err := c.GetConversation(ctx, 1)
+		if err != nil || !ok || conv.UnreadCount != 2 || !conv.Members[1].Online {
+			return false
+		}
+		messages, err := c.ListMessages(ctx, 1, 0, 10)
+		if err != nil || len(messages) != 3 {
+			return false
+		}
+		remoteSaved, exists, err := c.GetConversation(ctx, 2)
+		if err != nil || !exists || remoteSaved.UnreadCount != 1 {
+			return false
+		}
+		remoteCursor, err := c.SyncCursor(ctx, 2)
+		if err != nil || remoteCursor != 1 {
+			return false
+		}
+		remoteMessages, err := c.ListMessages(ctx, 2, 0, 10)
+		return err == nil && len(remoteMessages) == 1 && calls.Load() == 4
+	})
 }
 
 func TestCompleteSyncKeepsCursorWhenRESTHistoryHasGap(t *testing.T) {

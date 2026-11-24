@@ -3,10 +3,17 @@
 
 import { bridge, EVENTS, errorMessage, initBridge } from './bridge.js';
 import { initialState, messagesOf, store } from './state.js';
+import { applyConversationChange } from './utils/conversation-changes.js';
 import { mergeMessage, mergeMessages, sortConversations } from './utils/conversations.js';
 
 // Intervalo mínimo para repetir MarkAsRead da mesma posição quando o servidor ainda indica não lidas.
 const MARK_READ_RETRY_MS = 2000;
+const pendingConversationLoads = new Set();
+let chatGeneration = 0;
+
+function rememberConversationChange(change) {
+  for (const changes of pendingConversationLoads) changes.push(change);
+}
 
 /** Inicia a ponte, registra os eventos do Go e tenta restaurar a sessão salva. */
 export async function boot() {
@@ -55,28 +62,40 @@ export async function logout() {
 }
 
 function resetToLogin(notice) {
+  chatGeneration += 1;
   lastMarked.clear();
   store.set({ ...initialState, screen: 'login', notice });
 }
 
 async function enterChat(user) {
-  store.set({ screen: 'chat', user, notice: '', connection: await bridge.connectionState() });
+  const generation = ++chatGeneration;
+  const connection = await bridge.connectionState();
+  if (generation !== chatGeneration) return;
+  store.set({ screen: 'chat', user, notice: '', connection });
   await loadConversations();
 }
 
 export async function loadConversations() {
+  const userId = store.get().user?.id;
+  const generation = chatGeneration;
+  const changes = [];
+  pendingConversationLoads.add(changes);
   try {
     const conversations = await bridge.listConversations();
-    store.set({ conversations: sortConversations(conversations), conversationsLoaded: true });
+    if (generation !== chatGeneration || store.get().user?.id !== userId) return;
+    const latest = changes.reduce(applyConversationChange, conversations);
+    store.set({ conversations: sortConversations(latest), conversationsLoaded: true });
   } catch (error) {
     console.error(error);
-    store.set({ conversationsLoaded: true });
+    if (generation === chatGeneration && store.get().user?.id === userId) store.set({ conversationsLoaded: true });
+  } finally {
+    pendingConversationLoads.delete(changes);
   }
 }
 
 function upsertConversation(conversation) {
+  rememberConversationChange({ type: 'updated', conversation });
   store.set((state) => {
-    const others = state.conversations.filter((c) => c.id !== conversation.id);
     const messages = conversation.last_message
       ? updateMessages(state, conversation.id, (page) => ({
           ...page,
@@ -84,17 +103,21 @@ function upsertConversation(conversation) {
           items: page.loaded ? mergeMessages(page.items, [conversation.last_message]) : page.items,
         }))
       : state.messages;
-    return { conversations: sortConversations([...others, conversation]), messages };
+    return {
+      conversations: sortConversations(applyConversationChange(state.conversations, { type: 'updated', conversation })),
+      messages,
+    };
   });
   // Ex.: não lidas que voltaram do servidor depois de uma leitura feita sem conexão.
   if (conversation.id === store.get().activeConversationId && conversation.unread_count > 0) markActiveAsRead();
 }
 
 function removeConversation(id) {
+  rememberConversationChange({ type: 'removed', id });
   store.set((state) => {
     const { [id]: _removed, ...messages } = state.messages;
     return {
-      conversations: state.conversations.filter((c) => c.id !== id),
+      conversations: applyConversationChange(state.conversations, { type: 'removed', id }),
       activeConversationId: state.activeConversationId === id ? null : state.activeConversationId,
       messages,
     };
@@ -185,15 +208,9 @@ function applyReceipt({ conversation_id: id, up_to_sequence: upTo, status }) {
 
 /** Contato entrou ou saiu: atualiza o membro em todas as conversas. */
 function applyPresence({ user_id: userId, online }) {
+  rememberConversationChange({ type: 'presence', userId, online });
   store.set((state) => ({
-    conversations: state.conversations.map((conversation) =>
-      conversation.members?.some((m) => m.user_id === userId && m.online !== online)
-        ? {
-            ...conversation,
-            members: conversation.members.map((m) => (m.user_id === userId ? { ...m, online } : m)),
-          }
-        : conversation,
-    ),
+    conversations: applyConversationChange(state.conversations, { type: 'presence', userId, online }),
   }));
 }
 

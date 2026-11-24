@@ -342,9 +342,13 @@ Detalhes da implementação (`conversations.go`, `internal/cache/conversations.g
 - [x] `wails build` gerando o binário final (`build/bin/chat-client`); `README.md` com uso, teste com dois clientes
       e roteiro.
 
-Limitação conhecida: as atualizações da lista pelo REST que continuam existindo (ao entrar, ao sincronizar e ao
-entrar num grupo que já tinha mensagens) também podem, em raras corridas, gravar um estado anterior a um
-`conversation.updated` que chegou enquanto a resposta estava a caminho. A próxima atualização corrige.
+As atualizações da lista pelo REST guardam a revisão do cache antes da requisição. Se um evento mudar as
+conversas, mensagens ou presenças enquanto a resposta está a caminho, o cliente descarta a lista antiga e
+repete a busca. Após três tentativas seguidas, agenda outra busca sem adiantar o cursor da sincronização.
+A resposta antiga não apaga conversas nem regride indicadores no cache. Atualizações de participantes, inclusive
+em conversas vazias e grupos existentes, buscam a lista REST para mostrar a presença atual.
+Sob mudanças contínuas, a sincronização espera uma resposta estável antes de avançar o cursor. Ainda existe uma
+pequena janela entre ler o cache e emitir um evento para a interface em que outro evento pode mudar a conversa.
 
 ---
 

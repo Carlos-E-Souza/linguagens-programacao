@@ -110,16 +110,33 @@ func (a *App) syncIsCurrent(s *session, generation uint64) bool {
 // completeSync confere via REST o intervalo que o WebSocket recuperou. O servidor
 // limita o backfill a 500 mensagens por conversa, então REST completa o restante.
 func (a *App) completeSync(s *session, generation uint64, from map[int64]int64, received []api.Message) {
+	fresh, removed, err := a.fetchConversations(s)
+	if !a.syncIsCurrent(s, generation) {
+		return
+	}
+	if errors.Is(err, errStaleConversations) {
+		// O cache mudou durante três buscas. Tentar novamente mais tarde
+		// mantém o contador de não lidas e o cursor até a lista REST estar
+		// estável, sem bloquear a leitura de novos eventos WebSocket.
+		go func() {
+			timer := time.NewTimer(200 * time.Millisecond)
+			defer timer.Stop()
+			select {
+			case <-s.ctx.Done():
+				return
+			case <-timer.C:
+				if a.syncIsCurrent(s, generation) {
+					a.completeSync(s, generation, from, received)
+				}
+			}
+		}()
+		return
+	}
 	defer func() {
 		if a.syncIsCurrent(s, generation) {
 			s.queue.ResendAll(s.ctx)
 		}
 	}()
-
-	fresh, err := a.api.ListConversations(s.ctx)
-	if !a.syncIsCurrent(s, generation) {
-		return
-	}
 	canAdvance := err == nil
 	if err != nil {
 		log.Printf("atualizar conversas após sync: %v", err)
@@ -127,16 +144,9 @@ func (a *App) completeSync(s *session, generation uint64, from map[int64]int64, 
 		if err != nil {
 			return
 		}
-	} else {
-		removed, err := s.cache.ReplaceConversations(s.ctx, fresh)
-		if err != nil {
-			log.Printf("salvar conversas após sync: %v", err)
-			return
-		}
-		if a.syncIsCurrent(s, generation) {
-			for _, id := range removed {
-				a.emit(events.ConversationRemoved, events.ConversationRemovedPayload{ConversationID: id})
-			}
+	} else if a.syncIsCurrent(s, generation) {
+		for _, id := range removed {
+			a.emit(events.ConversationRemoved, events.ConversationRemovedPayload{ConversationID: id})
 		}
 	}
 

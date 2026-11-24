@@ -22,13 +22,24 @@ type emitted struct {
 	data any
 }
 
+type emittedEvents struct {
+	mu     sync.Mutex
+	values []emitted
+}
+
+func (e *emittedEvents) snapshot() []emitted {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]emitted(nil), e.values...)
+}
+
 // liveSession monta uma sessão sem WebSocket (os envios viram no-op) com uma conversa entre os usuários 1 e 2. O
 // REST responde com as mensagens 1..serverLast da conversa, todas do usuário 2.
-func liveSession(t *testing.T) (*App, *session, *[]emitted) {
+func liveSession(t *testing.T) (*App, *session, *emittedEvents) {
 	return liveSessionWithServer(t, 0)
 }
 
-func liveSessionWithServer(t *testing.T, serverLast int64) (*App, *session, *[]emitted) {
+func liveSessionWithServer(t *testing.T, serverLast int64) (*App, *session, *emittedEvents) {
 	t.Helper()
 	ctx := context.Background()
 	c, err := cache.Open(filepath.Join(t.TempDir(), "cliente.db"))
@@ -48,6 +59,15 @@ func liveSessionWithServer(t *testing.T, serverLast int64) (*App, *session, *[]e
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/conversations" {
+			conversations, err := c.ListConversations(ctx)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			json.NewEncoder(w).Encode(conversations)
+			return
+		}
 		before, _ := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)
 		page := []api.Message{}
 		for seq := int64(1); seq <= serverLast; seq++ {
@@ -61,18 +81,17 @@ func liveSessionWithServer(t *testing.T, serverLast int64) (*App, *session, *[]e
 	t.Cleanup(server.Close)
 	s := &session{user: me, cache: c, ctx: ctx}
 	s.queue = queue.New(c, func(api.Message) error { return nil }, queue.Options{})
-	var mu sync.Mutex
-	var got []emitted
+	got := &emittedEvents{}
 	a := &App{api: api.NewClient(server.URL), session: s, emit: func(name string, data ...any) {
 		var payload any
 		if len(data) > 0 {
 			payload = data[0]
 		}
-		mu.Lock()
-		got = append(got, emitted{name, payload})
-		mu.Unlock()
+		got.mu.Lock()
+		got.values = append(got.values, emitted{name, payload})
+		got.mu.Unlock()
 	}}
-	return a, s, &got
+	return a, s, got
 }
 
 // waitFor espera cond ficar verdadeira (usada com o trabalho feito em goroutines).
@@ -109,8 +128,9 @@ func TestHandleMessageNewSavesCountsAndAdvancesCursor(t *testing.T) {
 	if cursor, _ := s.cache.SyncCursor(s.ctx, 4); cursor != 1 {
 		t.Fatalf("cursor = %d", cursor)
 	}
-	if len(*got) != 4 || (*got)[0].name != events.MessageNew || (*got)[1].name != events.ConversationUpdated {
-		t.Fatalf("eventos = %+v", *got)
+	recorded := got.snapshot()
+	if len(recorded) != 4 || recorded[0].name != events.MessageNew || recorded[1].name != events.ConversationUpdated {
+		t.Fatalf("eventos = %+v", recorded)
 	}
 
 }
@@ -158,10 +178,11 @@ func TestServerErrorKeepsTransientFailuresQueued(t *testing.T) {
 	if len(pending) != 1 || pending[0].ClientID != "a" {
 		t.Fatalf("fila = %+v", pending)
 	}
-	if len(*got) != 1 {
-		t.Fatalf("eventos = %+v", *got)
+	recorded := got.snapshot()
+	if len(recorded) != 1 {
+		t.Fatalf("eventos = %+v", recorded)
 	}
-	update := (*got)[0].data.(events.MessageUpdatedPayload)
+	update := recorded[0].data.(events.MessageUpdatedPayload)
 	if update.ClientID != "b" || update.Status != api.StatusFailed || update.Error != "Você não participa mais desta conversa." {
 		t.Fatalf("message:updated = %+v", update)
 	}
@@ -171,8 +192,9 @@ func TestHandleMessageNewDuringSyncIsBuffered(t *testing.T) {
 	a, s, got := liveSession(t)
 	s.syncActive = true
 	a.handleMessageNew(s, raw(t, api.Message{ID: 10, ConversationID: 4, Sequence: 1, SenderID: 2, ClientID: "x"}))
-	if len(s.syncMessages) != 1 || len(*got) != 0 {
-		t.Fatalf("buffer = %d, eventos = %+v", len(s.syncMessages), *got)
+	recorded := got.snapshot()
+	if len(s.syncMessages) != 1 || len(recorded) != 0 {
+		t.Fatalf("buffer = %d, eventos = %+v", len(s.syncMessages), recorded)
 	}
 }
 
@@ -186,10 +208,11 @@ func TestHandleMessageStatusEmitsConversationPosition(t *testing.T) {
 	}
 	a.handleMessageStatus(s, raw(t, events.MessageStatusPayload{ConversationID: 4, UserID: 2, UpToSequence: 1,
 		Status: api.StatusRead}))
-	if len(*got) != 3 {
-		t.Fatalf("eventos = %+v", *got)
+	recorded := got.snapshot()
+	if len(recorded) != 3 {
+		t.Fatalf("eventos = %+v", recorded)
 	}
-	read := (*got)[1].data.(events.MessageStatusPayload)
+	read := recorded[1].data.(events.MessageStatusPayload)
 	if read.Status != api.StatusRead || read.UpToSequence != 1 {
 		t.Fatalf("message:status = %+v", read)
 	}
@@ -219,8 +242,9 @@ func TestConversationUpdatedAddsAndRemoves(t *testing.T) {
 	if _, ok, _ := s.cache.GetConversation(s.ctx, 9); !ok {
 		t.Fatal("grupo novo não entrou no cache")
 	}
-	if len(*got) != 1 || (*got)[0].name != events.ConversationUpdated {
-		t.Fatalf("eventos = %+v", *got)
+	recorded := got.snapshot()
+	if len(recorded) != 1 || recorded[0].name != events.ConversationUpdated {
+		t.Fatalf("eventos = %+v", recorded)
 	}
 
 	// Sem o usuário entre os membros: ele foi removido.
@@ -229,7 +253,8 @@ func TestConversationUpdatedAddsAndRemoves(t *testing.T) {
 	if _, ok, _ := s.cache.GetConversation(s.ctx, 9); ok {
 		t.Fatal("grupo continua no cache depois da remoção")
 	}
-	last := (*got)[len(*got)-1]
+	recorded = got.snapshot()
+	last := recorded[len(recorded)-1]
 	if last.name != events.ConversationRemoved {
 		t.Fatalf("último evento = %+v", last)
 	}

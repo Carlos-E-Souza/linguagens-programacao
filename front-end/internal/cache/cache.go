@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Carlos-E-Souza/linguagens-programacao/front-end/internal/api"
@@ -90,7 +91,9 @@ const statusRank = `CASE %s WHEN 'pending' THEN 0 WHEN 'sent' THEN 1 WHEN 'deliv
 
 // Cache é o banco SQLite local de um usuário.
 type Cache struct {
-	db *sql.DB
+	db       *sql.DB
+	changeMu sync.Mutex
+	revision uint64
 }
 
 // Dir devolve a pasta de dados do cliente, criando-a se preciso.
@@ -213,39 +216,76 @@ func (c *Cache) SaveConversations(ctx context.Context, conversations []api.Conve
 func (c *Cache) ReplaceConversations(ctx context.Context, conversations []api.Conversation) ([]int64, error) {
 	var removed []int64
 	err := c.inTx(ctx, func(tx *sql.Tx) error {
-		keep := make(map[int64]bool, len(conversations))
-		for _, conv := range conversations {
-			keep[conv.ID] = true
-			if err := saveConversation(ctx, tx, conv); err != nil {
-				return err
-			}
-		}
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM conversations`)
-		if err != nil {
-			return err
-		}
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return err
-			}
-			if !keep[id] {
-				removed = append(removed, id)
-			}
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		for _, id := range removed {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM conversations WHERE id = ?`, id); err != nil {
-				return err
-			}
-		}
-		return nil
+		var err error
+		removed, err = replaceConversationsTx(ctx, tx, conversations)
+		return err
 	})
 	return removed, err
+}
+
+// Revision devolve a versão das alterações locais que afetam as conversas.
+// Uma resposta REST iniciada nessa versão não pode substituir eventos mais novos.
+func (c *Cache) Revision() uint64 {
+	c.changeMu.Lock()
+	defer c.changeMu.Unlock()
+	return c.revision
+}
+
+// ReplaceConversationsIfCurrent só grava a resposta REST quando nenhum evento
+// mudou o cache desde o início da requisição. A verificação e a gravação são
+// protegidas pelo mesmo mutex para não haver uma alteração entre as duas.
+func (c *Cache) ReplaceConversationsIfCurrent(ctx context.Context, conversations []api.Conversation,
+	revision uint64) (removed []int64, applied bool, err error) {
+	c.changeMu.Lock()
+	defer c.changeMu.Unlock()
+	if c.revision != revision {
+		return nil, false, nil
+	}
+	err = c.runTx(ctx, func(tx *sql.Tx) error {
+		var txErr error
+		removed, txErr = replaceConversationsTx(ctx, tx, conversations)
+		return txErr
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	c.revision++
+	return removed, true, nil
+}
+
+func replaceConversationsTx(ctx context.Context, tx *sql.Tx, conversations []api.Conversation) ([]int64, error) {
+	keep := make(map[int64]bool, len(conversations))
+	for _, conv := range conversations {
+		keep[conv.ID] = true
+		if err := saveConversation(ctx, tx, conv); err != nil {
+			return nil, err
+		}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM conversations`)
+	if err != nil {
+		return nil, err
+	}
+	var removed []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if !keep[id] {
+			removed = append(removed, id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, id := range removed {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM conversations WHERE id = ?`, id); err != nil {
+			return nil, err
+		}
+	}
+	return removed, nil
 }
 
 func saveConversation(ctx context.Context, tx *sql.Tx, conv api.Conversation) error {
@@ -501,6 +541,16 @@ func (c *Cache) UpdateStatus(ctx context.Context, clientID, status string) error
 }
 
 func (c *Cache) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
+	c.changeMu.Lock()
+	defer c.changeMu.Unlock()
+	if err := c.runTx(ctx, fn); err != nil {
+		return err
+	}
+	c.revision++
+	return nil
+}
+
+func (c *Cache) runTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return wrap("iniciar transação", err)
