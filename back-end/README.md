@@ -12,7 +12,7 @@ do roteamento das mensagens em tempo real e da persistência do histórico.
 
 > **Convenção de nomes:** todo o código e todo o contrato de dados usam inglês — pacotes, arquivos, funções,
 > variáveis, variáveis de ambiente, tabelas e colunas do banco, endpoints, tipos do envelope WebSocket e chaves JSON.
-> A prosa da documentação permanece em português. A tabela de renomeações está em [`PLANO.md`](PLANO.md).
+> A prosa da documentação permanece em português.
 
 ## Estrutura
 
@@ -51,8 +51,6 @@ diretório do próprio pacote, então as migrações precisam morar ao lado do c
 | GET    | `/api/conversations/{id}/messages`         | Histórico paginado de mensagens                  |
 | GET    | `/ws`                                      | Abre a conexão WebSocket autenticada             |
 
-Os parâmetros de query e os campos JSON de cada endpoint estão detalhados em [`PLANO.md`](PLANO.md).
-
 ## Configuração
 
 As configurações são lidas de variáveis de ambiente. O arquivo `.env.example` lista as disponíveis:
@@ -65,7 +63,7 @@ As configurações são lidas de variáveis de ambiente. O arquivo `.env.example
 | `DEV_MODE`               | `false`     | Tolera `JWT_SECRET` vazio em desenvolvimento    |
 | `PERSISTENCE_WORKERS`    | `4`         | Quantidade de workers que gravam as mensagens   |
 | `PING_INTERVAL`          | `30s`       | Intervalo do heartbeat do WebSocket             |
-| `PONG_TIMEOUT`           | `60s`       | Tempo máximo de espera pelo ping                |
+| `PONG_TIMEOUT`           | `60s`       | Tempo máximo de espera pela resposta ao ping    |
 | `TOKEN_EXPIRY`           | `24h`       | Validade do token JWT                           |
 | `CLIENT_QUEUE_SIZE`      | `256`       | Buffer do canal de saída por conexão            |
 | `PERSISTENCE_QUEUE_SIZE` | `4096`      | Buffer da fila de persistência                  |
@@ -115,7 +113,8 @@ go mod tidy
 
 ## Teste de carga
 
-`cmd/loadgen` abre N conexões WebSocket, registra os usuários, cria um grupo e mede a latência das confirmações:
+Há dois geradores. O teste completo (conversas diretas e grupos, entregas, perdas, ordem e pprof) fica no
+módulo [`teste-carga/`](../teste-carga/README.md). Aqui, `cmd/loadgen` é a versão simples: abre N conexões WebSocket, registra os usuários, cria um grupo e mede a latência das confirmações:
 
 ```bash
 # 100 clientes, 20 mensagens cada (padrão: 100 clientes, 10 mensagens)
@@ -126,8 +125,7 @@ go run ./cmd/loadgen -clients 500 -messages 50 -report 2s
 ```
 
 O relatório traz mensagens enviadas e confirmadas, vazão, latências p50/p90/p99, número de goroutines e heap em uso.
-Um cliente que não consegue acompanhar é desconectado pelo servidor (é o mecanismo de backpressure descrito em
-`PLANO.md`), então um número pequeno de falhas em execuções longas é esperado.
+Um cliente que não consegue acompanhar é desconectado pelo servidor (é o mecanismo de backpressure), então um número pequeno de falhas em execuções longas é esperado.
 
 Exemplo de execução local (100 clientes, 20 mensagens cada):
 
@@ -142,7 +140,7 @@ latency p99:      28.673ms
 ## Identificadores do projeto
 
 Referência rápida dos nomes usados neste pacote. A coluna "Onde" indica o arquivo ou contexto em que o
-identificador aparece. Para a tabela completa de renomeações (português → inglês), ver [`PLANO.md`](PLANO.md).
+identificador aparece.
 
 | Identificador            | Tipo              | Onde                          | Descrição                                            |
 |--------------------------|-------------------|-------------------------------|------------------------------------------------------|
@@ -156,6 +154,8 @@ identificador aparece. Para a tabela completa de renomeações (português → i
 | `TOKEN_EXPIRY`           | variável de amb.  | `internal/config`             | Validade do JWT                                       |
 | `CLIENT_QUEUE_SIZE`      | variável de amb.  | `internal/config`             | Buffer do canal por conexão                           |
 | `PERSISTENCE_QUEUE_SIZE` | variável de amb.  | `internal/config`             | Buffer da fila de persistência                        |
+| `MESSAGE_LIMIT_CHARS`    | variável de amb.  | `internal/config`             | Tamanho máximo do corpo de uma mensagem               |
+| `PPROF_ADDRESS`          | variável de amb.  | `internal/config`             | Endereço do pprof; só aceito com `DEV_MODE`           |
 | `Config`                 | struct            | `internal/config/config.go`   | Agrupa toda a configuração do servidor                |
 | `Load`                   | função            | `internal/config/config.go`   | Lê o ambiente e devolve um `Config` validado          |
 | `isDevMode`              | função            | `internal/config/config.go`   | Avalia `DEV_MODE` a cada chamada (testável)           |

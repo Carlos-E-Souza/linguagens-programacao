@@ -8,8 +8,7 @@ Cliente desktop do chat em tempo real, feito com [Wails](https://wails.io). Tem 
   Nunca fala direto com o servidor: tudo passa pela camada Go.
 
 > **Convenção de nomes:** identificadores em inglês (pacotes, arquivos, funções, eventos, módulos JS, chaves JSON),
-> prosa em português (comentários, documentação e textos da interface), conforme `back-end/PLANO.md`. O plano de
-> implementação do cliente está em [`PLANO.md`](PLANO.md).
+> prosa em português (comentários, documentação e textos da interface).
 
 ## Estrutura
 
@@ -31,8 +30,8 @@ frontend/src/
   mock-bridge.js         dados falsos para desenvolver no navegador sem o Wails
   screens/               telas (login, chat)
   components/            componentes (avatar, lista de conversas, janela, bolha, campo de mensagem, indicador de conexão,
-                         modal, busca de pessoas, nova conversa, novo grupo, detalhes do grupo)
-  utils/                 dom, datas, ícones e regras de apresentação de conversas
+                         modal, busca de pessoas, seletor de membros, nova conversa, novo grupo, detalhes do grupo)
+  utils/                 dom, datas, ícones, regras de apresentação de conversas e validação do cadastro
   styles/                tokens.css, base.css, login.css, chat.css, dialogs.css
 ```
 
@@ -97,7 +96,7 @@ precisam dela explicitamente.
 # Desenvolvimento com hot reload (abre a janela do app)
 SERVER_URL=http://localhost:8080 wails dev
 
-# App com dados falsos, sem servidor (enquanto o back-end não existe); login: qualquer usuário, senha "senha1234"
+# App com dados falsos, sem servidor; login: qualquer usuário, senha "senha1234"
 VITE_MOCK=true wails dev
 
 # Só a interface no navegador, também com dados falsos
@@ -112,6 +111,9 @@ mockChat.presence(3, true)
 
 # Testes da camada Go
 go test -race -tags webkit2_41 ./...
+
+# Testes dos utilitários JS (node --test)
+cd frontend && npm test
 
 # Regenerar os bindings JS após mudar os métodos de App
 wails generate module -tags webkit2_41
