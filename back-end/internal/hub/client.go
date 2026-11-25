@@ -9,49 +9,50 @@ import (
 	"github.com/coder/websocket"
 )
 
-// Client is one open WebSocket connection belonging to one user.
+// Client é uma conexão WebSocket aberta pertencente a um usuário.
 //
-// A user may have several connections at once (two windows, a phone and a
-// laptop), which is why the hub keys them by user ID and keeps a set per
-// user rather than a single entry.
+// Um usuário pode ter várias conexões ao mesmo tempo (duas janelas, um
+// celular e um notebook), e por isso o hub as indexa pelo ID do usuário e
+// guarda um conjunto por usuário em vez de uma única entrada.
 type Client struct {
-	// userID and conn are set once at construction and only read
-	// afterwards, so they need no synchronisation.
+	// userID e conn são definidos uma vez na construção e depois só
+	// lidos, então não precisam de sincronização.
 	userID int64
 	conn   *websocket.Conn
 
-	// send is the outgoing queue. The hub writes to it; the write
-	// goroutine drains it. It is buffered so a momentary slowdown on the
-	// socket does not stall the hub loop.
+	// send é a fila de saída. O hub escreve nela; a goroutine de escrita a
+	// drena. Tem buffer para que uma lentidão momentânea no socket não
+	// trave o laço do hub.
 	send chan []byte
 
-	// cancel tears down both goroutines of the connection. Calling it is
-	// how any part of the system asks the connection to stop.
+	// cancel derruba as duas goroutines da conexão. Chamá-lo é como
+	// qualquer parte do sistema pede para a conexão parar.
 	cancel context.CancelFunc
 
-	// ctx is the connection's own context, cancelled by cancel above. It
-	// is stored so the hub can check whether the connection is already
-	// gone before blocking on a channel send.
+	// ctx é o contexto da própria conexão, cancelado pelo cancel acima. Ele
+	// é guardado para que o hub verifique se a conexão já se foi antes de
+	// bloquear num envio pelo canal.
 	ctx context.Context
 
-	// sendMu guards the closed flag and the send itself. Without it, a
-	// trySend running concurrently with close would send on a closed
-	// channel, which panics. Closing the channel is what tells the write
-	// goroutine to drain and stop, so it cannot simply be left open.
+	// sendMu protege a flag closed e o próprio envio. Sem ele, um trySend
+	// rodando junto com close enviaria num canal fechado, o que causa
+	// panic. Fechar o canal é o que avisa a goroutine de escrita para
+	// drenar e parar, então ele não pode simplesmente ficar aberto.
 	sendMu sync.Mutex
 	closed bool
 
-	// closeCode and closeReason are what the connection should be closed
-	// with, chosen by whoever closed the client first. Guarded by sendMu.
+	// closeCode e closeReason são o status com que a conexão deve ser
+	// fechada, escolhido por quem fechou o cliente primeiro. Protegidos
+	// por sendMu.
 	closeCode   websocket.StatusCode
 	closeReason string
 }
 
-// newClient builds a client with its own cancelable context.
+// newClient monta um cliente com seu próprio contexto cancelável.
 //
-// The returned context is intentionally not derived from the request
-// context: the HTTP request ends as soon as the handler returns, while
-// the connection must outlive it.
+// O contexto devolvido não deriva do contexto da requisição, de
+// propósito: a requisição HTTP termina assim que o handler retorna,
+// enquanto a conexão precisa durar além dela.
 func newClient(userID int64, conn *websocket.Conn, queueSize int) (*Client, context.Context) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -66,21 +67,21 @@ func newClient(userID int64, conn *websocket.Conn, queueSize int) (*Client, cont
 	return c, ctx
 }
 
-// context returns the connection's own context.
+// context devolve o contexto da própria conexão.
 func (c *Client) context() context.Context {
 	return c.ctx
 }
 
-// UserID returns the owner of this connection.
+// UserID devolve o dono desta conexão.
 func (c *Client) UserID() int64 {
 	return c.userID
 }
 
-// trySend queues a frame without blocking.
+// trySend enfileira um frame sem bloquear.
 //
-// It reports false when the queue is full, which the hub treats as a slow
-// client: dropping the connection is better than letting one stalled
-// consumer block delivery for everyone else.
+// Devolve false quando a fila está cheia, o que o hub trata como cliente
+// lento: derrubar a conexão é melhor do que deixar um consumidor travado
+// bloquear a entrega para todos os outros.
 func (c *Client) trySend(frame []byte) bool {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
@@ -97,17 +98,17 @@ func (c *Client) trySend(frame []byte) bool {
 	}
 }
 
-// close releases the client's resources with a normal close status. It is
-// safe to call more than once, which matters because several goroutines
-// may decide the connection is over at the same time.
+// close libera os recursos do cliente com status de fechamento normal.
+// Pode ser chamado mais de uma vez, o que importa porque várias goroutines
+// podem concluir ao mesmo tempo que a conexão acabou.
 func (c *Client) close() {
 	c.closeWith(websocket.StatusNormalClosure, "connection closed")
 }
 
-// closeWith releases the client's resources and records the WebSocket
-// status the connection should be closed with. Only the first call wins:
-// a slow client closed with StatusPolicyViolation keeps that code even
-// though the regular unregister path calls close afterwards.
+// closeWith libera os recursos do cliente e registra o status WebSocket
+// com que a conexão deve ser fechada. Só a primeira chamada vale: um
+// cliente lento fechado com StatusPolicyViolation mantém esse código
+// mesmo que o caminho normal de unregister chame close depois.
 func (c *Client) closeWith(code websocket.StatusCode, reason string) {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
@@ -119,15 +120,16 @@ func (c *Client) closeWith(code websocket.StatusCode, reason string) {
 	c.closeCode = code
 	c.closeReason = reason
 
-	// Cancelling before closing lets anything blocked on the context give
-	// up; the close then lets the write goroutine drain and exit.
+	// Cancelar antes de fechar deixa desistir quem estiver bloqueado no
+	// contexto; o fechamento então deixa a goroutine de escrita drenar e
+	// sair.
 	c.cancel()
 	close(c.send)
 }
 
-// CloseStatus returns the status and reason the connection should be
-// closed with. A client that was never closed by the hub reports a normal
-// closure.
+// CloseStatus devolve o status e o motivo com que a conexão deve ser
+// fechada. Um cliente que nunca foi fechado pelo hub informa fechamento
+// normal.
 func (c *Client) CloseStatus() (websocket.StatusCode, string) {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
@@ -138,39 +140,39 @@ func (c *Client) CloseStatus() (websocket.StatusCode, string) {
 	return c.closeCode, c.closeReason
 }
 
-// encodeFrame marshals an envelope into the bytes the writer sends.
+// encodeFrame serializa um envelope nos bytes que o escritor envia.
 func encodeFrame(env any) ([]byte, error) {
 	return json.Marshal(env)
 }
 
-// logClientError records a connection-scoped failure with its user.
+// logClientError registra uma falha da conexão junto com o usuário dela.
 func logClientError(userID int64, msg string, err error) {
 	slog.Debug(msg, "user_id", userID, "error", err)
 }
 
-// Read reads one frame from the connection.
+// Read lê um frame da conexão.
 //
-// Only the read goroutine calls this; coder/websocket allows one reader
-// at a time.
+// Só a goroutine de leitura chama isto; coder/websocket permite um leitor
+// por vez.
 func (c *Client) Read(ctx context.Context) (websocket.MessageType, []byte, error) {
 	return c.conn.Read(ctx)
 }
 
-// Write sends one frame.
+// Write envia um frame.
 //
-// Only the write goroutine calls this, which is what keeps the
-// single-writer rule of coder/websocket satisfied without a mutex.
+// Só a goroutine de escrita chama isto, o que satisfaz a regra de escritor
+// único do coder/websocket sem mutex.
 func (c *Client) Write(ctx context.Context, frame []byte) error {
 	return c.conn.Write(ctx, websocket.MessageText, frame)
 }
 
-// Next returns the next queued outgoing frame, blocking until one is
-// available or the connection is closed.
+// Next devolve o próximo frame de saída enfileirado, bloqueando até haver
+// um ou a conexão ser fechada.
 //
-// The second return value is false once the queue is closed and drained,
-// which is how the write goroutine learns to stop. Draining rather than
-// aborting matters: frames already queued (a final error, a shutdown
-// notice) still reach the client.
+// O segundo valor é false quando a fila está fechada e drenada, e é assim
+// que a goroutine de escrita sabe que deve parar. Drenar em vez de abortar
+// importa: frames já enfileirados (um erro final, um aviso de
+// desligamento) ainda chegam ao cliente.
 func (c *Client) Next(ctx context.Context) ([]byte, bool) {
 	select {
 	case frame, ok := <-c.send:
@@ -180,17 +182,16 @@ func (c *Client) Next(ctx context.Context) ([]byte, bool) {
 	}
 }
 
-// Ping sends a WebSocket ping and waits for the matching pong.
+// Ping envia um ping WebSocket e espera o pong correspondente.
 //
-// It is called only from the connection's write goroutine, so it does not
-// race with ordinary frame writes: coder/websocket permits a single
-// concurrent writer, and the heartbeat and the outgoing queue share that
-// one goroutine.
+// É chamado só pela goroutine de escrita da conexão, então não disputa com
+// as escritas normais de frames: coder/websocket permite um único escritor
+// por vez, e o heartbeat e a fila de saída compartilham essa goroutine.
 //
-// A failed ping is how a half-open connection is detected. TCP alone will
-// not notice a peer that vanished without closing (a laptop that slept, a
-// network that dropped), so without this the connection and its two
-// goroutines would linger indefinitely.
+// Um ping que falha é como se detecta uma conexão meio aberta. O TCP
+// sozinho não percebe um par que sumiu sem fechar (um notebook que
+// hibernou, uma rede que caiu), então sem isto a conexão e suas duas
+// goroutines ficariam penduradas indefinidamente.
 func (c *Client) Ping(ctx context.Context) error {
 	return c.conn.Ping(ctx)
 }

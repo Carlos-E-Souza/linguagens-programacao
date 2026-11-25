@@ -108,7 +108,7 @@ export function createLoginScreen(props) {
     id: 'display-name',
     label: 'Nome de exibição',
     autocomplete: 'name',
-    hint: 'Até 64 bytes; acentos podem ocupar mais de um byte.',
+    hint: 'Até 64 caracteres. Letras acentuadas contam como dois.',
   });
   displayName.input.addEventListener('blur', () => {
     if (mode === 'register') validateDisplayName();
@@ -119,7 +119,7 @@ export function createLoginScreen(props) {
     label: 'Senha',
     type: 'password',
     autocomplete: 'current-password',
-    hint: 'De 8 a 72 bytes. Acentos podem ocupar mais de um byte.',
+    hint: 'De 8 a 72 caracteres. Letras acentuadas contam como dois.',
   });
   password.input.addEventListener('blur', () => {
     if (mode === 'register') validatePassword();

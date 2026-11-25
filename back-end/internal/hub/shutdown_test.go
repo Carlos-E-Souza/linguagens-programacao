@@ -8,9 +8,10 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// TestShutdownNotifiesConnectedClients covers the graceful-shutdown
-// promise to the client: it must be told the server is going away so it
-// knows to reconnect, rather than seeing an unexplained socket close.
+// TestShutdownNotifiesConnectedClients cobre a promessa do desligamento
+// gracioso ao cliente: ele precisa ser avisado de que o servidor está
+// saindo para saber que deve reconectar, em vez de ver o socket fechar
+// sem explicação.
 func TestShutdownNotifiesConnectedClients(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, _ := f.createUsers(t)
@@ -18,7 +19,7 @@ func TestShutdownNotifiesConnectedClients(t *testing.T) {
 	aliceClient := f.addClient(alice.ID)
 	_ = f.addClient(bob.ID)
 
-	// Stopping the hub is what triggers the shutdown notice.
+	// Parar o hub é o que dispara o aviso de desligamento.
 	f.stop()
 
 	frame := waitForType(t, aliceClient, ws.TypeServerShutdown, 2*time.Second)
@@ -32,8 +33,8 @@ func TestShutdownNotifiesConnectedClients(t *testing.T) {
 	}
 }
 
-// TestShutdownEmptiesTheHub checks that no connection survives shutdown,
-// which is what lets the process exit without leaking goroutines.
+// TestShutdownEmptiesTheHub confere que nenhuma conexão sobrevive ao
+// desligamento, o que permite ao processo sair sem vazar goroutines.
 func TestShutdownEmptiesTheHub(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, _ := f.createUsers(t)
@@ -52,8 +53,8 @@ func TestShutdownEmptiesTheHub(t *testing.T) {
 	}
 }
 
-// TestStopIsSafeWithoutClients guards against a shutdown path that only
-// works when somebody is connected.
+// TestStopIsSafeWithoutClients protege contra um caminho de desligamento
+// que só funcione quando há alguém conectado.
 func TestStopIsSafeWithoutClients(t *testing.T) {
 	f := newHubFixture(t)
 	f.createUsers(t)
@@ -65,9 +66,9 @@ func TestStopIsSafeWithoutClients(t *testing.T) {
 	}
 }
 
-// TestMultipleConnectionsPerUser covers the multi-device case: the hub
-// keys clients per user, so a second connection must not evict the first,
-// and presence must only flip when the last one goes.
+// TestMultipleConnectionsPerUser cobre o caso de vários dispositivos: o
+// hub indexa os clientes por usuário, então uma segunda conexão não pode
+// expulsar a primeira, e a presença só muda quando a última sai.
 func TestMultipleConnectionsPerUser(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, _ := f.createUsers(t)
@@ -79,7 +80,7 @@ func TestMultipleConnectionsPerUser(t *testing.T) {
 		t.Fatal("user should be online with two connections")
 	}
 
-	// Closing one connection must leave the user online.
+	// Fechar uma conexão precisa manter o usuário online.
 	first.close()
 	f.hub.Unregister(first.Client)
 
@@ -89,7 +90,7 @@ func TestMultipleConnectionsPerUser(t *testing.T) {
 		t.Error("user must stay online while a second connection remains")
 	}
 
-	// Closing the last one takes them offline.
+	// Fechar a última o deixa offline.
 	second.close()
 	f.hub.Unregister(second.Client)
 
@@ -104,26 +105,26 @@ func TestMultipleConnectionsPerUser(t *testing.T) {
 	t.Error("user should be offline once every connection is gone")
 }
 
-// TestSlowClientIsDisconnected proves the backpressure rule: a client
-// that never drains its queue is dropped instead of blocking the hub.
+// TestSlowClientIsDisconnected prova a regra de backpressure: um cliente
+// que nunca drena a fila é derrubado em vez de bloquear o hub.
 func TestSlowClientIsDisconnected(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, conv := f.createUsers(t)
 
-	// Register bob without the pump, so nobody consumes his queue.
+	// Registra bob sem o bombeamento, para ninguém consumir a fila dele.
 	slow, slowCtx := newClient(bob.ID, nil, 2)
 	f.hub.Register(slow)
 	defer slowCtx.Done()
 
 	aliceClient := f.addClient(alice.ID)
 
-	// Wait for the registration to be processed.
+	// Espera o registro ser processado.
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) && !f.hub.IsOnline(bob.ID) {
 		time.Sleep(time.Millisecond)
 	}
 
-	// Fill the queue past its capacity.
+	// Enche a fila além da capacidade.
 	for i := 0; i < 10; i++ {
 		f.submit(aliceClient, mustEnvelope(ws.TypeMessageSend, ws.SendPayload{
 			ClientID:       "flood-" + string(rune('a'+i)),
@@ -132,7 +133,7 @@ func TestSlowClientIsDisconnected(t *testing.T) {
 		}))
 	}
 
-	// The hub must keep serving alice while dropping bob.
+	// O hub precisa continuar atendendo alice enquanto derruba bob.
 	waitForType(t, aliceClient, ws.TypeMessageAck, 3*time.Second)
 
 	deadline = time.Now().Add(3 * time.Second)
@@ -146,13 +147,14 @@ func TestSlowClientIsDisconnected(t *testing.T) {
 	t.Error("the slow client should have been disconnected")
 }
 
-// TestSyncSendsMissedMessages covers the reconnect backfill: messages
-// written while the client was away must arrive, followed by sync.end.
+// TestSyncSendsMissedMessages cobre o preenchimento na reconexão: as
+// mensagens gravadas enquanto o cliente estava fora precisam chegar,
+// seguidas de sync.end.
 func TestSyncSendsMissedMessages(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, conv := f.createUsers(t)
 
-	// Alice sends two messages while bob is offline.
+	// Alice envia duas mensagens enquanto bob está offline.
 	aliceClient := f.addClient(alice.ID)
 
 	for i := 1; i <= 2; i++ {
@@ -164,7 +166,7 @@ func TestSyncSendsMissedMessages(t *testing.T) {
 		waitForType(t, aliceClient, ws.TypeMessageAck, 2*time.Second)
 	}
 
-	// Persist them so the sync query can find them.
+	// Grava as mensagens para a consulta de sync encontrá-las.
 	if err := f.flushMessages(conv); err != nil {
 		t.Fatalf("could not seed the history: %v", err)
 	}
@@ -177,7 +179,7 @@ func TestSyncSendsMissedMessages(t *testing.T) {
 		},
 	}))
 
-	// Two message.new frames, then the terminator.
+	// Dois frames message.new, depois o terminador.
 	waitForType(t, bobClient, ws.TypeMessageNew, 3*time.Second)
 	waitForType(t, bobClient, ws.TypeSyncEnd, 3*time.Second)
 }

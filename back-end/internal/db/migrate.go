@@ -11,18 +11,19 @@ import (
 	"strings"
 )
 
-// migrationFS embeds the SQL files into the binary. Embedding rather than
-// reading from disk at runtime means a built server carries its schema
-// with it and cannot be started against a half-copied set of files.
+// migrationFS embute os arquivos SQL no binário. Embutir em vez de ler do
+// disco em execução faz o servidor compilado carregar o próprio schema e
+// impede que ele suba com um conjunto de arquivos copiado pela metade.
 //
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
-// Migrate applies every pending migration in filename order.
+// Migrate aplica todas as migrações pendentes na ordem dos nomes de
+// arquivo.
 //
-// Each file runs inside its own transaction and the whole set is guarded
-// by the schema_version table, so a migration is applied exactly once
-// even if the process crashes or two instances start together.
+// Cada arquivo roda na própria transação e o conjunto todo é controlado
+// pela tabela schema_version, então uma migração é aplicada exatamente uma
+// vez mesmo se o processo cair ou duas instâncias subirem juntas.
 func Migrate(ctx context.Context, handle *sql.DB) error {
 	if err := ensureVersionTable(ctx, handle); err != nil {
 		return err
@@ -54,7 +55,7 @@ func Migrate(ctx context.Context, handle *sql.DB) error {
 	return nil
 }
 
-// ensureVersionTable creates the bookkeeping table if it is missing.
+// ensureVersionTable cria a tabela de controle se ela não existir.
 func ensureVersionTable(ctx context.Context, handle *sql.DB) error {
 	const query = `
 		CREATE TABLE IF NOT EXISTS schema_version (
@@ -68,7 +69,7 @@ func ensureVersionTable(ctx context.Context, handle *sql.DB) error {
 	return nil
 }
 
-// appliedVersions returns the set of migrations already recorded.
+// appliedVersions devolve o conjunto de migrações já registradas.
 func appliedVersions(ctx context.Context, handle *sql.DB) (map[string]struct{}, error) {
 	rows, err := handle.QueryContext(ctx, `SELECT version FROM schema_version`)
 	if err != nil {
@@ -85,8 +86,8 @@ func appliedVersions(ctx context.Context, handle *sql.DB) (map[string]struct{}, 
 		applied[version] = struct{}{}
 	}
 
-	// rows.Err reports a failure that ended the iteration early; without
-	// this check a truncated read would look like an empty result set.
+	// rows.Err informa uma falha que encerrou a iteração antes da hora; sem
+	// essa checagem, uma leitura truncada pareceria um resultado vazio.
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate schema_version: %w", err)
 	}
@@ -94,8 +95,8 @@ func appliedVersions(ctx context.Context, handle *sql.DB) (map[string]struct{}, 
 	return applied, nil
 }
 
-// migrationFiles lists the embedded SQL files in lexical order, which is
-// why they carry a numeric prefix (0001_...).
+// migrationFiles lista os arquivos SQL embutidos em ordem lexical, e por
+// isso eles levam um prefixo numérico (0001_...).
 func migrationFiles() ([]string, error) {
 	entries, err := fs.ReadDir(migrationFS, "migrations")
 	if err != nil {
@@ -114,14 +115,14 @@ func migrationFiles() ([]string, error) {
 	return names, nil
 }
 
-// versionOf turns "0001_initial.sql" into "0001".
+// versionOf transforma "0001_initial.sql" em "0001".
 func versionOf(name string) string {
 	return strings.TrimSuffix(strings.SplitN(name, "_", 2)[0], ".sql")
 }
 
-// applyMigration runs one file and records it, both in a single
-// transaction: if the SQL fails halfway, the version row is rolled back
-// too and the migration is retried on the next start.
+// applyMigration roda um arquivo e o registra, as duas coisas numa única
+// transação: se o SQL falhar no meio, a linha de versão também é desfeita
+// e a migração é tentada de novo na próxima inicialização.
 func applyMigration(ctx context.Context, handle *sql.DB, name, version string) error {
 	content, err := migrationFS.ReadFile("migrations/" + name)
 	if err != nil {
@@ -132,8 +133,8 @@ func applyMigration(ctx context.Context, handle *sql.DB, name, version string) e
 	if err != nil {
 		return fmt.Errorf("begin migration %s: %w", name, err)
 	}
-	// Rollback is a no-op once Commit succeeds, so this is safe on both
-	// the success and the failure path.
+	// Rollback não faz nada depois de um Commit bem-sucedido, então isto é
+	// seguro tanto no caminho de sucesso quanto no de falha.
 	defer tx.Rollback()
 
 	if _, err := tx.ExecContext(ctx, string(content)); err != nil {

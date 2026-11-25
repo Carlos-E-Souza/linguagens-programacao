@@ -11,24 +11,23 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// ErrNotFound is returned when a lookup matches no row. Handlers map it
-// to 404, so callers compare against this sentinel rather than against
-// driver-specific error values.
+// ErrNotFound é devolvido quando uma busca não encontra nenhuma linha. Os
+// handlers o convertem em 404, então quem chama compara com este sentinela
+// e não com valores de erro específicos do driver.
 var ErrNotFound = errors.New("not found")
 
-// ErrConflict is returned when a write violates a uniqueness rule, such
-// as registering a username that already exists.
+// ErrConflict é devolvido quando uma gravação viola uma regra de
+// unicidade, como cadastrar um username que já existe.
 var ErrConflict = errors.New("conflict")
 
-// userColumns is the projection shared by every user query, so the scan
-// order below stays in step with the SELECT list.
+// userColumns é a projeção comum a todas as consultas de usuário, para que
+// a ordem do scan abaixo acompanhe a lista do SELECT.
 const userColumns = `id, username, display_name, password_hash, created_at`
 
-// CreateUser inserts a new account and returns it with the assigned ID.
+// CreateUser insere uma nova conta e a devolve com o ID atribuído.
 //
-// The UNIQUE constraint on username is what actually enforces
-// uniqueness: checking with a SELECT first would race against a
-// concurrent registration.
+// A restrição UNIQUE em username é o que de fato garante a unicidade:
+// checar antes com um SELECT geraria corrida com um cadastro simultâneo.
 func (s *Store) CreateUser(ctx context.Context, username, displayName, passwordHash string) (models.User, error) {
 	const query = `
 		INSERT INTO users (username, display_name, password_hash, created_at)
@@ -58,28 +57,28 @@ func (s *Store) CreateUser(ctx context.Context, username, displayName, passwordH
 	}, nil
 }
 
-// GetUserByID looks an account up by primary key.
+// GetUserByID busca uma conta pela chave primária.
 func (s *Store) GetUserByID(ctx context.Context, id int64) (models.User, error) {
 	query := `SELECT ` + userColumns + ` FROM users WHERE id = ?`
 	return scanUser(s.db.QueryRowContext(ctx, query, id))
 }
 
-// GetUserByUsername looks an account up by its unique username. Used by
-// the login handler, which needs the password hash.
+// GetUserByUsername busca uma conta pelo username único. Usado pelo
+// handler de login, que precisa do hash da senha.
 func (s *Store) GetUserByUsername(ctx context.Context, username string) (models.User, error) {
 	query := `SELECT ` + userColumns + ` FROM users WHERE username = ?`
 	return scanUser(s.db.QueryRowContext(ctx, query, username))
 }
 
-// SearchUsers finds accounts whose username or display name contains the
-// term, excluding the caller so they cannot start a conversation with
-// themselves.
+// SearchUsers encontra contas cujo username ou nome de exibição contém o
+// termo, excluindo quem chama, para que ninguém abra uma conversa consigo
+// mesmo.
 //
-// LIMIT is parameterised rather than interpolated: the value comes from
-// a request and string-building SQL is how injection bugs start.
+// LIMIT é parametrizado, e não interpolado: o valor vem de uma requisição,
+// e montar SQL com strings é como começam os bugs de injeção.
 func (s *Store) SearchUsers(ctx context.Context, term string, excludeID int64, limit int) ([]models.User, error) {
-	// LIKE treats % and _ as wildcards, so they are escaped to keep the
-	// search literal.
+	// LIKE trata % e _ como curingas, então eles são escapados para manter
+	// a busca literal.
 	pattern := "%" + escapeLike(term) + "%"
 
 	query := `
@@ -111,14 +110,16 @@ func (s *Store) SearchUsers(ctx context.Context, term string, excludeID int64, l
 	return users, nil
 }
 
-// rowScanner is satisfied by both *sql.Row and *sql.Rows, which lets one
-// scan helper serve single-row and multi-row queries alike.
+// rowScanner é satisfeita tanto por *sql.Row quanto por *sql.Rows, o que
+// permite que um único helper de scan sirva consultas de uma ou de várias
+// linhas.
 type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-// scanUser reads one user row and maps sql.ErrNoRows onto ErrNotFound so
-// callers never need to import database/sql to handle a missing row.
+// scanUser lê uma linha de usuário e converte sql.ErrNoRows em ErrNotFound,
+// para que quem chama nunca precise importar database/sql para tratar uma
+// linha ausente.
 func scanUser(row rowScanner) (models.User, error) {
 	var user models.User
 
@@ -133,9 +134,9 @@ func scanUser(row rowScanner) (models.User, error) {
 	return user, nil
 }
 
-// escapeLike neutralises the LIKE wildcards in a user-supplied term. The
-// backslash is escaped first, otherwise it would double-escape the
-// characters added afterwards.
+// escapeLike neutraliza os curingas do LIKE num termo vindo do usuário. A
+// barra invertida é escapada primeiro, senão ela escaparia de novo os
+// caracteres adicionados depois.
 func escapeLike(term string) string {
 	term = strings.ReplaceAll(term, `\`, `\\`)
 	term = strings.ReplaceAll(term, "%", `\%`)

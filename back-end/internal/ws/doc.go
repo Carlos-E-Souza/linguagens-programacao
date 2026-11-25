@@ -1,23 +1,25 @@
-// Package ws defines the WebSocket wire contract between the server and
-// the desktop client: the envelope that wraps every frame and the payload
-// types carried inside it.
+// Pacote ws define o contrato WebSocket entre o servidor e o cliente
+// desktop: o envelope que envolve todo frame e os tipos de payload que
+// ele carrega.
 //
-// The names here are a public contract, shared with the client, and they
-// match the JSON tags, the REST request fields and the database columns.
-// A value therefore keeps the same name all the way from the SQL row to
-// the JavaScript object, which is the point of the project's naming
-// convention: there is exactly one spelling for each concept.
+// Os nomes aqui são um contrato público, compartilhado com o cliente, e
+// coincidem com as tags JSON, os campos das requisições REST e as colunas
+// do banco. Assim, um valor mantém o mesmo nome da linha SQL até o objeto
+// JavaScript, que é o sentido da convenção de nomes do projeto: existe
+// exatamente uma grafia para cada conceito.
 //
-// Two design choices are worth knowing when changing this package:
+// Vale conhecer duas decisões de projeto antes de mudar este pacote:
 //
-//   - The envelope carries its payload as json.RawMessage. A frame cannot
-//     be decoded into a concrete payload type until its Type is known, so
-//     the payload is decoded in a second step by the hub.
-//   - The client-to-server and server-to-client constants are declared
-//     separately, so each direction lists exactly the types it accepts.
+//   - O envelope carrega o payload como json.RawMessage. Um frame não pode
+//     ser decodificado num tipo de payload concreto antes de se conhecer
+//     seu Type, então o payload é decodificado num segundo passo pelo hub.
+//   - As constantes cliente-servidor e servidor-cliente são declaradas
+//     separadamente, para que cada direção liste exatamente os tipos que
+//     aceita.
 //
-// Client-to-server: message.send, message.delivered, message.read, sync.
+// Cliente para servidor: message.send, message.delivered, message.read,
+// sync.
 //
-// Server-to-client: message.ack, message.new, message.status, presence,
-// conversation.updated, sync.end, error, server.shutdown.
+// Servidor para cliente: message.ack, message.new, message.status,
+// presence, conversation.updated, sync.end, error, server.shutdown.
 package ws

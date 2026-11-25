@@ -18,7 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// apiFixture bundles a running test server with its dependencies.
+// apiFixture junta um servidor de teste em execução com suas dependências.
 type apiFixture struct {
 	t       *testing.T
 	server  *Server
@@ -27,8 +27,8 @@ type apiFixture struct {
 	issuer  *auth.TokenIssuer
 }
 
-// newFixture builds a server backed by a migrated temporary database.
-// bcrypt runs at its cheapest cost so the suite stays fast.
+// newFixture monta um servidor sobre um banco temporário já migrado.
+// O bcrypt roda com o custo mais barato para a suíte continuar rápida.
 func newFixture(t *testing.T) *apiFixture {
 	t.Helper()
 
@@ -67,7 +67,7 @@ func newFixture(t *testing.T) *apiFixture {
 	}
 }
 
-// do performs a request against the fixture and returns the recorder.
+// do executa uma requisição contra a fixture e devolve o recorder.
 func (f *apiFixture) do(method, path, token string, body any) *httptest.ResponseRecorder {
 	f.t.Helper()
 
@@ -94,7 +94,7 @@ func (f *apiFixture) do(method, path, token string, body any) *httptest.Response
 	return rec
 }
 
-// register creates an account through the API and returns it.
+// register cria uma conta pela API e a devolve.
 func (f *apiFixture) register(username string) models.User {
 	f.t.Helper()
 
@@ -114,7 +114,7 @@ func (f *apiFixture) register(username string) models.User {
 	return user
 }
 
-// login authenticates and returns the token.
+// login autentica e devolve o token.
 func (f *apiFixture) login(username string) string {
 	f.t.Helper()
 
@@ -150,7 +150,7 @@ func TestRegisterAndLogin(t *testing.T) {
 		t.Fatal("expected a non-zero user id")
 	}
 
-	// The response must never carry the hash.
+	// A resposta nunca pode trazer o hash.
 	if bytes.Contains(f.do(http.MethodGet, "/api/health", "", nil).Body.Bytes(), []byte("password_hash")) {
 		t.Error("health response leaked a password hash key")
 	}
@@ -198,10 +198,11 @@ func TestRegisterValidation(t *testing.T) {
 	}
 }
 
-// TestRegisterNormalizesUsername documents that a mixed-case username is
-// lowercased rather than rejected, so a user can type "Gabriel" and still
-// log in as "gabriel". Duplicate detection then works across cases, which
-// the second half of this test covers.
+// TestRegisterNormalizesUsername documenta que um username com maiúsculas
+// é convertido para minúsculas em vez de rejeitado, então o usuário pode
+// digitar "Gabriel" e ainda entrar como "gabriel". A detecção de
+// duplicatas passa então a ignorar maiúsculas, o que a segunda metade
+// deste teste cobre.
 func TestRegisterNormalizesUsername(t *testing.T) {
 	f := newFixture(t)
 
@@ -220,7 +221,7 @@ func TestRegisterNormalizesUsername(t *testing.T) {
 		t.Errorf("username: got %q, want %q", got, want)
 	}
 
-	// Registering the other case must now collide.
+	// Cadastrar a outra grafia agora precisa colidir.
 	rec = f.do(http.MethodPost, "/api/auth/register", "", registerRequest{
 		Username: "GABRIEL", DisplayName: "Other", Password: "password123",
 	})
@@ -253,8 +254,8 @@ func TestLoginWrongPassword(t *testing.T) {
 	}
 }
 
-// TestLoginUnknownUserMatchesWrongPassword keeps the two failure modes
-// indistinguishable so accounts cannot be enumerated.
+// TestLoginUnknownUserMatchesWrongPassword mantém os dois modos de falha
+// indistinguíveis para que as contas não possam ser enumeradas.
 func TestLoginUnknownUserMatchesWrongPassword(t *testing.T) {
 	f := newFixture(t)
 	f.register("gabriel")
@@ -384,9 +385,9 @@ func TestCreateDirectConversationWithSelfIsRejected(t *testing.T) {
 	}
 }
 
-// TestNonMemberCannotReadMessages is the central authorisation test: an
-// outsider must not be able to read a conversation they are not in, and
-// must not be told whether it exists.
+// TestNonMemberCannotReadMessages é o teste central de autorização: quem
+// está de fora não pode ler uma conversa da qual não participa, nem saber
+// se ela existe.
 func TestNonMemberCannotReadMessages(t *testing.T) {
 	f := newFixture(t)
 	f.register("alice")
@@ -427,7 +428,7 @@ func TestAddAndRemoveMembers(t *testing.T) {
 	var conv models.Conversation
 	_ = json.Unmarshal(rec.Body.Bytes(), &conv)
 
-	// Add carol.
+	// Adiciona carol.
 	rec = f.do(http.MethodPost, "/api/conversations/"+itoa(conv.ID)+"/members", token,
 		addMembersRequest{Members: []int64{carol.ID}})
 	if got, want := rec.Code, http.StatusOK; got != want {
@@ -460,7 +461,7 @@ func TestAddAndRemoveMembers(t *testing.T) {
 	}
 }
 
-// TestNonAdminCannotRemoveOthers covers the role check.
+// TestNonAdminCannotRemoveOthers cobre a checagem de papel.
 func TestNonAdminCannotRemoveOthers(t *testing.T) {
 	f := newFixture(t)
 	f.register("alice")
@@ -476,14 +477,14 @@ func TestNonAdminCannotRemoveOthers(t *testing.T) {
 	var conv models.Conversation
 	_ = json.Unmarshal(rec.Body.Bytes(), &conv)
 
-	// Bob is a plain member, so he may not remove carol.
+	// Bob é um membro comum, então não pode remover carol.
 	rec = f.do(http.MethodDelete,
 		"/api/conversations/"+itoa(conv.ID)+"/members/"+itoa(carol.ID), bobToken, nil)
 	if got, want := rec.Code, http.StatusForbidden; got != want {
 		t.Errorf("status: got %d, want %d (%s)", got, want, rec.Body)
 	}
 
-	// But he may always remove himself.
+	// Mas ele sempre pode remover a si mesmo.
 	rec = f.do(http.MethodDelete,
 		"/api/conversations/"+itoa(conv.ID)+"/members/"+itoa(bob.ID), bobToken, nil)
 	if got, want := rec.Code, http.StatusOK; got != want {
@@ -523,14 +524,14 @@ func TestListMessagesPaginationBounds(t *testing.T) {
 	var conv models.Conversation
 	_ = json.Unmarshal(rec.Body.Bytes(), &conv)
 
-	// A limit above the maximum must be clamped, not honoured.
+	// Um limite acima do máximo precisa ser reduzido ao máximo, não atendido.
 	rec = f.do(http.MethodGet,
 		"/api/conversations/"+itoa(conv.ID)+"/messages?limit=99999", token, nil)
 	if got, want := rec.Code, http.StatusOK; got != want {
 		t.Errorf("status: got %d, want %d (%s)", got, want, rec.Body)
 	}
 
-	// Malformed parameters are a client error.
+	// Parâmetros malformados são erro do cliente.
 	for _, query := range []string{"?before=abc", "?limit=-1"} {
 		rec = f.do(http.MethodGet,
 			"/api/conversations/"+itoa(conv.ID)+"/messages"+query, token, nil)
@@ -551,8 +552,8 @@ func TestInvalidConversationIDIsRejected(t *testing.T) {
 	}
 }
 
-// TestWrongMethodIsRejected relies on the Go 1.22 routing patterns,
-// which return 405 for a method the mux does not know.
+// TestWrongMethodIsRejected depende dos padrões de rota do Go 1.22, que
+// devolvem 405 para um método que o mux não conhece.
 func TestWrongMethodIsRejected(t *testing.T) {
 	f := newFixture(t)
 
@@ -562,14 +563,14 @@ func TestWrongMethodIsRejected(t *testing.T) {
 	}
 }
 
-// itoa formats an ID for use in a URL path.
+// itoa formata um ID para uso num caminho de URL.
 func itoa(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
-// TestRemoveMemberFromDirectConversationIsRejected keeps a direct
-// conversation intact: leaving it would let a second one be created for
-// the same pair.
+// TestRemoveMemberFromDirectConversationIsRejected mantém intacta uma
+// conversa individual: sair dela permitiria criar uma segunda conversa
+// para o mesmo par.
 func TestRemoveMemberFromDirectConversationIsRejected(t *testing.T) {
 	f := newFixture(t)
 	alice := f.register("alice")
@@ -588,7 +589,7 @@ func TestRemoveMemberFromDirectConversationIsRejected(t *testing.T) {
 		t.Fatalf("leave direct: got %d, want %d (%s)", got, want, rec.Body)
 	}
 
-	// The pair still resolves to the same conversation.
+	// O par ainda aponta para a mesma conversa.
 	rec = f.do(http.MethodPost, "/api/conversations", token, createConversationRequest{
 		Type: models.ConversationDirect, Members: []int64{bob.ID},
 	})

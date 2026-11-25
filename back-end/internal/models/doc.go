@@ -1,9 +1,9 @@
-// Package models defines the domain types shared by the whole server:
-// User, Conversation, Member and Message.
+// Pacote models define os tipos de domínio compartilhados por todo o
+// servidor: User, Conversation, Member e Message.
 //
-// The struct tags are part of the public contract. They are in English
-// and identical across every layer — the same field is called
-// conversation_id in the SQL column, in the REST payload and in the
-// WebSocket envelope — so a value never has to be renamed while it
-// travels through the system.
+// As tags das structs fazem parte do contrato público. Elas são em inglês
+// e idênticas em todas as camadas — o mesmo campo se chama
+// conversation_id na coluna SQL, no payload REST e no envelope WebSocket
+// —, então um valor nunca precisa ser renomeado enquanto atravessa o
+// sistema.
 package models

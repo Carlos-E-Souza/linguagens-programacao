@@ -2,18 +2,18 @@
 
 Este documento divide a implementação do cliente desktop em fases. O cliente tem duas camadas:
 
-- **Camada Go (Wails)** — `main.go`, `aplicacao.go` e `internal/`: fala com o servidor (REST e WebSocket), mantém a
+- **Camada Go (Wails)** — `main.go`, `app.go` e `internal/`: fala com o servidor (REST e WebSocket), mantém a
   reconexão, a fila de mensagens pendentes e o cache local, e emite eventos para a interface com `runtime.EventsEmit`.
 - **Interface (Vite + HTML/CSS/JS puros)** — `frontend/`: telas e componentes, sem frameworks. Chama os métodos Go
   expostos pelo Wails (`wailsjs/go/main/App`) e escuta os eventos com `EventsOn` (`wailsjs/runtime`).
 
 A interface **nunca** fala diretamente com o servidor: toda comunicação passa pela camada Go.
 
-O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/PLANO.md`.
+O protocolo WebSocket (tipos de envelope e campos) está definido em `back-end/docs/PLANO.md`.
 
 **Convenção de nomes:** identificadores em inglês em ambos os lados — protocolo, chaves JSON, banco, variáveis de
 ambiente e também os nomes internos do front-end (métodos expostos, eventos do Wails, pacotes Go e módulos
-JavaScript) —, conforme a decisão registrada em `back-end/PLANO.md`. A prosa, os comentários e os textos da interface
+JavaScript) —, conforme a decisão registrada em `back-end/docs/PLANO.md`. A prosa, os comentários e os textos da interface
 ficam em português. Renomeações aplicadas no front-end: `Aplicacao`→`App`, `internal/clientews`→`internal/wsclient`,
 `internal/eventos`→`internal/events`, `internal/fila`→`internal/queue`, `ponte.js`→`bridge.js`,
 `estado.js`→`state.js`, `telas/`→`screens/`, `componentes/`→`components/`, `utilitarios/`→`utils/`.

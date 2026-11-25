@@ -1,6 +1,6 @@
-// Package auth issues and validates the authentication credentials of
-// the server: it hashes and verifies user passwords with bcrypt and
-// generates and validates the JWT access tokens (HS256).
+// Pacote auth emite e valida as credenciais de autenticação do servidor:
+// gera e confere o hash das senhas com bcrypt e gera e valida os tokens
+// de acesso JWT (HS256).
 package auth
 
 import (
@@ -13,34 +13,35 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// MinPasswordLength is the shortest password we accept. It is enforced at
-// registration only: raising it later must not lock out existing users.
+// MinPasswordLength é o menor tamanho de senha aceito. Só é exigido no
+// cadastro: aumentá-lo depois não pode trancar usuários já existentes.
 const MinPasswordLength = 8
 
-// Sentinel errors returned by this package.
+// Erros sentinela devolvidos por este pacote.
 var (
-	// ErrInvalidCredentials covers both an unknown username and a wrong
-	// password. The two are deliberately indistinguishable so the API
-	// cannot be used to enumerate which accounts exist.
+	// ErrInvalidCredentials cobre tanto um username desconhecido quanto uma
+	// senha errada. Os dois são indistinguíveis de propósito, para que a
+	// API não sirva para descobrir quais contas existem.
 	ErrInvalidCredentials = errors.New("invalid credentials")
 
-	// ErrInvalidToken means the token was malformed, expired or signed
-	// with the wrong key.
+	// ErrInvalidToken indica token malformado, expirado ou assinado com a
+	// chave errada.
 	ErrInvalidToken = errors.New("invalid token")
 
-	// ErrWeakPassword means the password failed the length rule.
+	// ErrWeakPassword indica que a senha não passou na regra de tamanho.
 	ErrWeakPassword = fmt.Errorf("password must be at least %d characters", MinPasswordLength)
 )
 
-// Hasher hashes and verifies passwords. It carries the bcrypt cost so
-// tests can use the cheapest setting instead of paying for the
-// production cost on every run.
+// Hasher gera e confere hashes de senha. Ele guarda o custo do bcrypt
+// para que os testes usem o valor mais barato em vez de pagar o custo de
+// produção a cada execução.
 type Hasher struct {
 	cost int
 }
 
-// NewHasher returns a Hasher with the given bcrypt cost. A cost below
-// bcrypt.MinCost is clamped, since bcrypt itself rejects it.
+// NewHasher devolve um Hasher com o custo de bcrypt informado. Um custo
+// abaixo de bcrypt.MinCost é ajustado para o mínimo, já que o bcrypt o
+// rejeita.
 func NewHasher(cost int) *Hasher {
 	if cost < bcrypt.MinCost {
 		cost = bcrypt.MinCost
@@ -51,17 +52,17 @@ func NewHasher(cost int) *Hasher {
 	return &Hasher{cost: cost}
 }
 
-// DefaultHasher returns a Hasher at bcrypt.DefaultCost, which is the
-// right trade-off between resistance to cracking and login latency.
+// DefaultHasher devolve um Hasher com bcrypt.DefaultCost, o equilíbrio
+// certo entre resistência a quebra e latência do login.
 func DefaultHasher() *Hasher {
 	return NewHasher(bcrypt.DefaultCost)
 }
 
-// HashPassword validates and hashes a plaintext password.
+// HashPassword valida uma senha em texto puro e gera o seu hash.
 //
-// bcrypt truncates at 72 bytes, so a longer password would silently have
-// its tail ignored. Rejecting it is safer than accepting a password whose
-// effective length is shorter than it looks.
+// O bcrypt trunca em 72 bytes, então o final de uma senha mais longa seria
+// ignorado sem aviso. Rejeitá-la é mais seguro do que aceitar uma senha
+// cujo tamanho efetivo é menor do que parece.
 func (h *Hasher) HashPassword(password string) (string, error) {
 	if len(password) < MinPasswordLength {
 		return "", ErrWeakPassword
@@ -78,10 +79,10 @@ func (h *Hasher) HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-// CheckPassword reports whether the plaintext matches the stored hash.
+// CheckPassword informa se o texto puro corresponde ao hash guardado.
 //
-// bcrypt.CompareHashAndPassword is constant-time with respect to the
-// hash, so it does not leak information through timing.
+// bcrypt.CompareHashAndPassword tem tempo constante em relação ao hash,
+// então não vaza informação pelo tempo de resposta.
 func (h *Hasher) CheckPassword(hash, password string) error {
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		return ErrInvalidCredentials
@@ -89,16 +90,16 @@ func (h *Hasher) CheckPassword(hash, password string) error {
 	return nil
 }
 
-// TokenIssuer signs and verifies the access tokens.
+// TokenIssuer assina e verifica os tokens de acesso.
 type TokenIssuer struct {
 	secret     []byte
 	expiry     time.Duration
 	signingAlg string
 }
 
-// NewTokenIssuer returns an issuer using HS256. An empty secret is
-// rejected here rather than at first use, so a misconfigured server
-// cannot start and then accept unverifiable tokens.
+// NewTokenIssuer devolve um emissor que usa HS256. Um segredo vazio é
+// rejeitado aqui, e não no primeiro uso, para que um servidor mal
+// configurado não consiga subir e depois aceitar tokens inverificáveis.
 func NewTokenIssuer(secret string, expiry time.Duration) (*TokenIssuer, error) {
 	if secret == "" {
 		return nil, errors.New("jwt secret must not be empty")
@@ -114,10 +115,10 @@ func NewTokenIssuer(secret string, expiry time.Duration) (*TokenIssuer, error) {
 	}, nil
 }
 
-// GenerateToken returns a signed token for the user.
+// GenerateToken devolve um token assinado para o usuário.
 //
-// The subject carries the user ID as a string because the JWT spec
-// defines sub as a string; it is converted back on validation.
+// O subject leva o ID do usuário como string porque a especificação JWT
+// define sub como string; ele é convertido de volta na validação.
 func (t *TokenIssuer) GenerateToken(userID int64) (string, error) {
 	now := time.Now()
 
@@ -137,11 +138,13 @@ func (t *TokenIssuer) GenerateToken(userID int64) (string, error) {
 	return signed, nil
 }
 
-// ValidateToken verifies the signature and expiry and returns the user ID.
+// ValidateToken confere a assinatura e a expiração e devolve o ID do
+// usuário.
 //
-// The signing method is pinned to HMAC. Without that check a token could
-// declare "alg": "none", or name an asymmetric algorithm and have the
-// public key used as the HMAC secret — the classic JWT confusion attack.
+// O método de assinatura é fixado em HMAC. Sem essa checagem, um token
+// poderia declarar "alg": "none", ou indicar um algoritmo assimétrico e
+// fazer a chave pública ser usada como segredo HMAC — o clássico ataque
+// de confusão de algoritmo do JWT.
 func (t *TokenIssuer) ValidateToken(raw string) (int64, error) {
 	token, err := jwt.ParseWithClaims(raw, &jwt.RegisteredClaims{},
 		func(token *jwt.Token) (any, error) {
@@ -173,9 +176,9 @@ func (t *TokenIssuer) ValidateToken(raw string) (int64, error) {
 	return userID, nil
 }
 
-// BearerToken extracts the token from an Authorization header value.
-// The scheme is matched case-insensitively because HTTP treats it that
-// way, even though clients usually send "Bearer".
+// BearerToken extrai o token do valor de um header Authorization.
+// O esquema é comparado sem diferenciar maiúsculas porque o HTTP o trata
+// assim, embora os clientes normalmente enviem "Bearer".
 func BearerToken(header string) (string, error) {
 	const prefix = "bearer "
 

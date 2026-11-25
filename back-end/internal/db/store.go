@@ -6,32 +6,32 @@ import (
 	"strings"
 )
 
-// Store exposes every database operation of the server.
+// Store expõe todas as operações de banco do servidor.
 //
-// It is a thin wrapper around *sql.DB rather than a set of free
-// functions so that handlers can depend on one value. It holds no
-// mutable state, so a single instance is safe to share between the REST
-// handlers, the hub and the persistence workers.
+// É um invólucro fino sobre *sql.DB em vez de um conjunto de funções
+// soltas, para que os handlers dependam de um único valor. Não guarda
+// estado mutável, então uma única instância pode ser compartilhada entre
+// os handlers REST, o hub e os workers de persistência.
 type Store struct {
 	db *sql.DB
 }
 
-// NewStore wraps an open database handle.
+// NewStore envolve uma conexão de banco já aberta.
 func NewStore(handle *sql.DB) *Store {
 	return &Store{db: handle}
 }
 
-// DB returns the underlying handle, for the few callers that need to run
-// their own transaction across several repositories.
+// DB devolve a conexão subjacente, para os poucos chamadores que precisam
+// rodar a própria transação envolvendo vários repositórios.
 func (s *Store) DB() *sql.DB {
 	return s.db
 }
 
-// isUniqueViolation reports whether err is a UNIQUE constraint failure.
+// isUniqueViolation informa se err é uma falha de restrição UNIQUE.
 //
-// modernc.org/sqlite does not export a typed error for this, so the
-// check is by message. It is confined to this one function so that a
-// driver change only needs a fix here.
+// modernc.org/sqlite não exporta um erro tipado para isso, então a
+// checagem é pela mensagem. Ela fica restrita a esta função para que uma
+// troca de driver só precise de ajuste aqui.
 func isUniqueViolation(err error) bool {
 	if err == nil {
 		return false
@@ -39,7 +39,7 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(strings.ToUpper(err.Error()), "UNIQUE CONSTRAINT FAILED")
 }
 
-// isForeignKeyViolation reports whether err is a FOREIGN KEY failure.
+// isForeignKeyViolation informa se err é uma falha de FOREIGN KEY.
 func isForeignKeyViolation(err error) bool {
 	if err == nil {
 		return false
@@ -47,16 +47,16 @@ func isForeignKeyViolation(err error) bool {
 	return strings.Contains(strings.ToUpper(err.Error()), "FOREIGN KEY CONSTRAINT FAILED")
 }
 
-// txFunc is the body of a transaction. Returning an error rolls back;
-// returning nil commits.
+// txFunc é o corpo de uma transação. Devolver erro desfaz; devolver nil
+// confirma.
 type txFunc func(tx *sql.Tx) error
 
-// withTx runs fn inside a transaction, committing on success and rolling
-// back on any error or panic.
+// withTx roda fn dentro de uma transação, confirmando em caso de sucesso e
+// desfazendo em caso de erro ou panic.
 //
-// The rollback is deferred unconditionally because Rollback after a
-// successful Commit returns sql.ErrTxDone and does nothing, so the
-// success path is unaffected.
+// O rollback é adiado (defer) incondicionalmente porque Rollback depois de
+// um Commit bem-sucedido devolve sql.ErrTxDone e não faz nada, então o
+// caminho de sucesso não é afetado.
 func (s *Store) withTx(ctx context.Context, fn txFunc) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

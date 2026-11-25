@@ -3,7 +3,7 @@
 Este documento divide a implementação do servidor em fases. Cada fase termina com algo executável e testável, e
 as fases seguintes se apoiam nas anteriores. As tarefas usam checkboxes para acompanhar o progresso.
 
-O protocolo WebSocket definido aqui também é usado pelo cliente (ver `front-end/PLANO.md`), então qualquer mudança
+O protocolo WebSocket definido aqui também é usado pelo cliente (ver `front-end/docs/PLANO.md`), então qualquer mudança
 nele deve ser refletida nos dois planos.
 
 **Convenção de nomes (decisão de equipe):** todo o projeto é escrito em inglês — nomes de pacotes, arquivos,

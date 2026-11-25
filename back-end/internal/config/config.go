@@ -1,5 +1,5 @@
-// Package config loads the server environment configuration with
-// safe defaults and validates what is required to run.
+// Pacote config carrega a configuração do servidor a partir do ambiente,
+// com padrões seguros, e valida o que é obrigatório para rodar.
 package config
 
 import (
@@ -10,38 +10,38 @@ import (
 	"time"
 )
 
-// devJWTSecret is the placeholder key used when DEV_MODE is on and no
-// JWT_SECRET was provided. It is intentionally obvious so it can never be
-// mistaken for a real secret.
+// devJWTSecret é a chave provisória usada quando DEV_MODE está ligado e
+// nenhum JWT_SECRET foi informado. É óbvia de propósito, para nunca ser
+// confundida com um segredo real.
 const devJWTSecret = "insecure-dev-secret-do-not-use-in-production"
 
-// Config groups everything the server needs to start.
-// Fields are exported (capitalized) so package main can read them.
+// Config reúne tudo o que o servidor precisa para subir.
+// Os campos são exportados (maiúsculos) para que o pacote main os leia.
 type Config struct {
-	ServerAddress        string        // HTTP listen address, e.g. ":8080"
-	DatabasePath         string        // SQLite database file path
-	JWTSecret            string        // HS256 key used to sign tokens
-	PersistenceWorkers   int           // number of goroutines writing messages
-	PingInterval         time.Duration // WebSocket heartbeat cadence
-	PongTimeout          time.Duration // max time to wait for a ping acknowledgement
-	TokenExpiry          time.Duration // JWT validity window
-	ClientQueueSize      int           // per-connection outgoing channel buffer
-	PersistenceQueueSize int           // persistence queue buffer
-	MessageLimitChars    int           // maximum length of a message body
-	PprofAddress         string        // separate debug listen address; empty disables it
-	DevMode              bool          // whether DEV_MODE is on
+	ServerAddress        string        // endereço de escuta HTTP, ex.: ":8080"
+	DatabasePath         string        // caminho do arquivo do banco SQLite
+	JWTSecret            string        // chave HS256 usada para assinar tokens
+	PersistenceWorkers   int           // número de goroutines que gravam mensagens
+	PingInterval         time.Duration // cadência do heartbeat do WebSocket
+	PongTimeout          time.Duration // tempo máximo de espera pela resposta ao ping
+	TokenExpiry          time.Duration // validade do JWT
+	ClientQueueSize      int           // buffer do canal de saída de cada conexão
+	PersistenceQueueSize int           // buffer da fila de persistência
+	MessageLimitChars    int           // tamanho máximo do corpo de uma mensagem
+	PprofAddress         string        // endereço de escuta da depuração; vazio desativa
+	DevMode              bool          // se DEV_MODE está ligado
 }
 
-// isDevMode reports whether DEV_MODE is enabled, marking a local run
-// without a .env file where an empty secret is tolerated. We decide it
-// via a dedicated variable instead of guessing from other signals.
+// isDevMode informa se DEV_MODE está ligado, o que marca uma execução
+// local sem arquivo .env, em que um segredo vazio é tolerado. A decisão
+// vem de uma variável dedicada em vez de ser deduzida de outros sinais.
 func isDevMode() bool {
 	return os.Getenv("DEV_MODE") == "true"
 }
 
-// Load reads the environment and returns a ready-to-use Config.
-// An empty secret is rejected outside dev mode: failing fast is
-// better than starting a server nobody can authenticate against.
+// Load lê o ambiente e devolve uma Config pronta para uso.
+// Um segredo vazio é rejeitado fora do modo dev: falhar cedo é melhor do
+// que subir um servidor em que ninguém consegue se autenticar.
 func Load() (Config, error) {
 	cfg := Config{
 		ServerAddress:        envOr("SERVER_ADDRESS", ":8080"),
@@ -55,9 +55,9 @@ func Load() (Config, error) {
 		DevMode:              isDevMode(),
 	}
 
-	// Durations are parsed strictly: a typo such as PING_INTERVAL=30
-	// (no unit) must stop startup instead of silently running with a
-	// value the operator never chose.
+	// As durações são lidas de forma estrita: um erro de digitação como
+	// PING_INTERVAL=30 (sem unidade) precisa impedir a inicialização em vez
+	// de rodar em silêncio com um valor que o operador nunca escolheu.
 	var err error
 	if cfg.PingInterval, err = envDurationOr("PING_INTERVAL", 30*time.Second); err != nil {
 		return cfg, err
@@ -73,9 +73,10 @@ func Load() (Config, error) {
 		if !isDevMode() {
 			return cfg, fmt.Errorf("JWT_SECRET is required (or set DEV_MODE=true for development)")
 		}
-		// Dev mode still needs a non-empty key, because the token issuer
-		// refuses to sign with an empty secret. A fixed placeholder keeps
-		// local runs working without pretending to be secure.
+		// O modo dev ainda precisa de uma chave não vazia, porque o emissor
+		// de tokens se recusa a assinar com segredo vazio. Uma chave fixa
+		// provisória mantém as execuções locais funcionando sem fingir
+		// segurança.
 		cfg.JWTSecret = devJWTSecret
 		slog.Warn("DEV_MODE is enabled: using an insecure development JWT secret; tokens are not verifiable across restarts")
 	}
@@ -88,8 +89,9 @@ func Load() (Config, error) {
 	if cfg.MessageLimitChars < 1 {
 		return cfg, fmt.Errorf("MESSAGE_LIMIT_CHARS must be at least 1")
 	}
-	// The profiler endpoints expose internals and have no authentication,
-	// so they are refused outside dev mode rather than silently enabled.
+	// Os endpoints do profiler expõem detalhes internos e não têm
+	// autenticação, então são recusados fora do modo dev em vez de serem
+	// ativados em silêncio.
 	if cfg.PprofAddress != "" && !cfg.DevMode {
 		return cfg, fmt.Errorf("PPROF_ADDRESS requires DEV_MODE=true")
 	}
@@ -97,9 +99,9 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// envOr returns the value of the named variable or a fallback when it
-// is unset (or empty). Empty is treated as unset because an empty
-// string is never a meaningful value for any setting here.
+// envOr devolve o valor da variável indicada ou um valor padrão quando ela
+// não está definida (ou está vazia). Vazio conta como não definido porque
+// uma string vazia nunca é um valor útil para nenhuma configuração aqui.
 func envOr(name string, fallback string) string {
 	if value := os.Getenv(name); value != "" {
 		return value
@@ -107,9 +109,9 @@ func envOr(name string, fallback string) string {
 	return fallback
 }
 
-// envIntOr parses an integer variable. A malformed value falls back to
-// the default rather than killing startup, but the problem is logged
-// so misconfiguration stays visible in the server logs.
+// envIntOr lê uma variável inteira. Um valor malformado cai no padrão em
+// vez de derrubar a inicialização, mas o problema é registrado para que a
+// configuração errada continue visível nos logs do servidor.
 func envIntOr(name string, fallback int) int {
 	value := os.Getenv(name)
 	if value == "" {
@@ -123,10 +125,9 @@ func envIntOr(name string, fallback int) int {
 	return parsed
 }
 
-// envDurationOr parses a duration variable such as "30s" or "24h",
-// which is exactly what time.ParseDuration understands. A unit-less
-// number (like "30") is rejected with an error, teaching users to
-// always add a unit.
+// envDurationOr lê uma variável de duração como "30s" ou "24h", que é
+// exatamente o que time.ParseDuration entende. Um número sem unidade
+// (como "30") é rejeitado com erro, para que sempre se informe a unidade.
 func envDurationOr(name string, fallback time.Duration) (time.Duration, error) {
 	value := os.Getenv(name)
 	if value == "" {

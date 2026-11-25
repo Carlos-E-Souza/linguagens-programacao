@@ -43,7 +43,7 @@ A camada Go do Wails mantém a conexão WebSocket com o servidor, cuida da recon
 O projeto adota **um único idioma para identificadores: o inglês**. Vale para nomes de pacotes, arquivos, funções,
 variáveis, variáveis de ambiente, tabelas e colunas do banco, endpoints, tipos do envelope WebSocket e chaves JSON.
 Assim um mesmo dado mantém o mesmo nome desde a coluna do SQL até o objeto JavaScript, sem traduções pelo caminho.
-A **prosa da documentação permanece em português** — os planos, este README e os comentários explicativos são
+A **prosa da documentação permanece em português** — este README e os comentários explicativos são
 escritos em português, citando os identificadores em inglês.
 
 | Camada                  | Exemplo                                                                        |
@@ -54,9 +54,6 @@ escritos em português, citando os identificadores em inglês.
 | Envelope WebSocket      | `{"type": "message.send", "data": {...}}`                                      |
 | Tipos de evento WS      | `message.ack`, `message.new`, `message.status`, `presence`, `typing`, `sync`   |
 | Variáveis de ambiente   | `SERVER_ADDRESS`, `DATABASE_PATH`, `JWT_SECRET`, `PERSISTENCE_WORKERS`         |
-
-A tabela completa de renomeações (nome antigo em português → nome novo em inglês) está em
-[`back-end/PLANO.md`](back-end/PLANO.md).
 
 ## Recursos do Go Explorados
 

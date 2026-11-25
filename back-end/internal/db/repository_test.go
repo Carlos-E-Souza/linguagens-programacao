@@ -11,7 +11,7 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// newTestStore returns a Store backed by a fresh migrated database.
+// newTestStore devolve um Store sobre um banco novo já migrado.
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
@@ -23,7 +23,7 @@ func newTestStore(t *testing.T) *Store {
 	return NewStore(handle)
 }
 
-// mustCreateUser registers a user, failing the test on error.
+// mustCreateUser cadastra um usuário, falhando o teste em caso de erro.
 func mustCreateUser(t *testing.T, s *Store, username string) models.User {
 	t.Helper()
 
@@ -34,7 +34,7 @@ func mustCreateUser(t *testing.T, s *Store, username string) models.User {
 	return user
 }
 
-// mustCreateDirect creates a direct conversation between two users.
+// mustCreateDirect cria uma conversa individual entre dois usuários.
 func mustCreateDirect(t *testing.T, s *Store, a, b models.User) models.Conversation {
 	t.Helper()
 
@@ -46,7 +46,7 @@ func mustCreateDirect(t *testing.T, s *Store, a, b models.User) models.Conversat
 	return conv
 }
 
-// mustCreateGroup creates a group conversation owned by owner.
+// mustCreateGroup cria uma conversa em grupo cujo dono é owner.
 func mustCreateGroup(t *testing.T, s *Store, owner models.User, name string, members []int64) models.Conversation {
 	t.Helper()
 
@@ -95,8 +95,8 @@ func TestGetUserNotFound(t *testing.T) {
 	}
 }
 
-// TestCreateUserRejectsDuplicateUsername proves the UNIQUE constraint is
-// the actual guard, not a pre-flight SELECT that could race.
+// TestCreateUserRejectsDuplicateUsername prova que a restrição UNIQUE é a
+// proteção real, e não um SELECT prévio sujeito a corrida.
 func TestCreateUserRejectsDuplicateUsername(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -130,9 +130,9 @@ func TestSearchUsersExcludesCallerAndMatchesSubstring(t *testing.T) {
 	}
 }
 
-// TestSearchUsersEscapesWildcards is the interesting one: the term is
-// user input, so a bare % must match a literal percent sign rather than
-// every row.
+// TestSearchUsersEscapesWildcards é o caso interessante: o termo vem do
+// usuário, então um % isolado precisa casar com um sinal de porcentagem
+// literal em vez de com todas as linhas.
 func TestSearchUsersEscapesWildcards(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -171,7 +171,7 @@ func TestCreateDirectConversationAndFindIt(t *testing.T) {
 		t.Errorf("conversation id: got %d, want %d", found.ID, created.ID)
 	}
 
-	// The lookup must be symmetrical: from either side it is the same chat.
+	// A busca precisa ser simétrica: de qualquer lado é a mesma conversa.
 	reversed, err := s.GetDirectConversation(ctx, b.ID, a.ID)
 	if err != nil {
 		t.Fatalf("GetDirectConversation(reversed) failed: %v", err)
@@ -181,9 +181,9 @@ func TestCreateDirectConversationAndFindIt(t *testing.T) {
 	}
 }
 
-// TestGetDirectConversationIgnoresGroups guards the COUNT(*) = 2 rule: a
-// group containing the same two people must not be mistaken for their
-// private chat.
+// TestGetDirectConversationIgnoresGroups protege a regra COUNT(*) = 2: um
+// grupo com as mesmas duas pessoas não pode ser confundido com a conversa
+// privada delas.
 func TestGetDirectConversationIgnoresGroups(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -210,7 +210,7 @@ func TestCreateConversationRollsBackOnMissingMember(t *testing.T) {
 		t.Fatal("expected an error for a non-existent member")
 	}
 
-	// The failed transaction must leave nothing behind.
+	// A transação que falhou não pode deixar nada para trás.
 	var count int
 	if err := s.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM conversations`).Scan(&count); err != nil {
 		t.Fatalf("count conversations: %v", err)
@@ -259,8 +259,8 @@ func TestMembershipAndRoles(t *testing.T) {
 	}
 }
 
-// TestAddMembersIsIdempotent covers the reconnect case: the same request
-// arriving twice must not fail.
+// TestAddMembersIsIdempotent cobre o caso de reconexão: a mesma requisição
+// chegando duas vezes não pode falhar.
 func TestAddMembersIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -353,7 +353,7 @@ func TestUnreadCountAndReadWatermark(t *testing.T) {
 	if got, want := len(inserted), 3; got != want {
 		t.Fatalf("inserted: got %d, want %d", got, want)
 	}
-	// The returned rows must carry the database-assigned IDs.
+	// As linhas devolvidas precisam trazer os IDs atribuídos pelo banco.
 	for _, msg := range inserted {
 		if msg.ID == 0 {
 			t.Errorf("stored message %q has no ID", msg.ClientID)
@@ -378,7 +378,7 @@ func TestUnreadCountAndReadWatermark(t *testing.T) {
 	if got, want := unreadFor(bob.ID), 3; got != want {
 		t.Errorf("unread before reading: got %d, want %d", got, want)
 	}
-	// The sender's own messages are never unread for them.
+	// As mensagens do próprio remetente nunca contam como não lidas para ele.
 	if got, want := unreadFor(alice.ID), 0; got != want {
 		t.Errorf("unread for the sender: got %d, want %d", got, want)
 	}
@@ -392,8 +392,8 @@ func TestUnreadCountAndReadWatermark(t *testing.T) {
 	}
 }
 
-// TestMarkDeliveredIsMonotonic proves an out-of-order acknowledgement
-// cannot move the watermark backwards.
+// TestMarkDeliveredIsMonotonic prova que uma confirmação fora de ordem não
+// move a marca para trás.
 func TestMarkDeliveredIsMonotonic(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -423,8 +423,8 @@ func TestMarkDeliveredIsMonotonic(t *testing.T) {
 	}
 }
 
-// TestMarkReadAlsoAdvancesDelivered documents that reading implies
-// delivery, which the client relies on for its tick marks.
+// TestMarkReadAlsoAdvancesDelivered documenta que ler implica entrega, algo
+// de que o cliente depende para os seus ícones de confirmação.
 func TestMarkReadAlsoAdvancesDelivered(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -454,8 +454,8 @@ func TestMarkReadAlsoAdvancesDelivered(t *testing.T) {
 	}
 }
 
-// TestInsertMessagesDeduplicatesByClientID is the guarantee the whole
-// resend-after-reconnect flow depends on.
+// TestInsertMessagesDeduplicatesByClientID é a garantia de que depende
+// todo o fluxo de reenvio após reconexão.
 func TestInsertMessagesDeduplicatesByClientID(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -509,7 +509,7 @@ func TestListMessagesPagination(t *testing.T) {
 		t.Fatalf("InsertMessages() failed: %v", err)
 	}
 
-	// Newest page: no cursor, so the last three by sequence.
+	// Página mais nova: sem cursor, então as três últimas por sequence.
 	page, err := s.ListMessages(ctx, conv.ID, 0, 3)
 	if err != nil {
 		t.Fatalf("ListMessages() failed: %v", err)
@@ -517,7 +517,7 @@ func TestListMessagesPagination(t *testing.T) {
 	if got, want := len(page), 3; got != want {
 		t.Fatalf("page size: got %d, want %d", got, want)
 	}
-	// Ascending order is the contract for a chat view.
+	// A ordem crescente é o contrato para a tela de chat.
 	if got, want := page[0].Sequence, int64(8); got != want {
 		t.Errorf("first sequence: got %d, want %d", got, want)
 	}
@@ -525,7 +525,7 @@ func TestListMessagesPagination(t *testing.T) {
 		t.Errorf("last sequence: got %d, want %d", got, want)
 	}
 
-	// Older page: strictly before sequence 8.
+	// Página mais antiga: estritamente antes da sequence 8.
 	older, err := s.ListMessages(ctx, conv.ID, 8, 3)
 	if err != nil {
 		t.Fatalf("ListMessages(before) failed: %v", err)
@@ -567,8 +567,8 @@ func TestListMessagesAfter(t *testing.T) {
 	}
 }
 
-// TestLastSequenceTracksInserts covers the hub priming its counter from
-// the database after a restart.
+// TestLastSequenceTracksInserts cobre o hub inicializando seu contador a
+// partir do banco depois de reiniciar.
 func TestLastSequenceTracksInserts(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -601,8 +601,9 @@ func TestLastSequenceTracksInserts(t *testing.T) {
 	}
 }
 
-// TestStatusUpdateFromNonMemberIsNotFound guards the authorisation path:
-// a status write from someone outside the conversation must be reported.
+// TestStatusUpdateFromNonMemberIsNotFound protege o caminho de
+// autorização: uma gravação de status de alguém de fora da conversa
+// precisa ser informada.
 func TestStatusUpdateFromNonMemberIsNotFound(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -617,8 +618,8 @@ func TestStatusUpdateFromNonMemberIsNotFound(t *testing.T) {
 	}
 }
 
-// newMessage builds a message with a UTC timestamp, so tests never depend
-// on the local clock.
+// newMessage monta uma mensagem com horário em UTC, para que os testes
+// nunca dependam do relógio local.
 func newMessage(conversationID, sequence, senderID int64, clientID, body string) models.Message {
 	return models.Message{
 		ConversationID: conversationID,
@@ -630,8 +631,8 @@ func newMessage(conversationID, sequence, senderID int64, clientID, body string)
 	}
 }
 
-// TestStoreAgainstSharedMemoryDatabase is a smoke test for the in-memory
-// variant, since some constraints behave differently without WAL.
+// TestStoreAgainstSharedMemoryDatabase é um teste rápido da variante em
+// memória, já que algumas restrições se comportam diferente sem WAL.
 func TestStoreAgainstSharedMemoryDatabase(t *testing.T) {
 	handle, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(ON)")
 	if err != nil {
@@ -654,10 +655,10 @@ func TestStoreAgainstSharedMemoryDatabase(t *testing.T) {
 	}
 }
 
-// TestListUserConversationsLastMessageAndActivityOrder covers the two
-// promises of the conversation list: each entry carries its last message,
-// and the most recently active conversation comes first, regardless of
-// how many messages each one has.
+// TestListUserConversationsLastMessageAndActivityOrder cobre as duas
+// promessas da lista de conversas: cada item traz sua última mensagem, e a
+// conversa com atividade mais recente vem primeiro, independentemente de
+// quantas mensagens cada uma tem.
 func TestListUserConversationsLastMessageAndActivityOrder(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -666,8 +667,8 @@ func TestListUserConversationsLastMessageAndActivityOrder(t *testing.T) {
 	bob := mustCreateUser(t, s, "bob")
 	carol := mustCreateUser(t, s, "carol")
 
-	busy := mustCreateDirect(t, s, alice, bob)     // many old messages
-	recent := mustCreateDirect(t, s, alice, carol) // one new message
+	busy := mustCreateDirect(t, s, alice, bob)     // muitas mensagens antigas
+	recent := mustCreateDirect(t, s, alice, carol) // uma mensagem nova
 	empty := mustCreateGroup(t, s, alice, "empty", []int64{bob.ID})
 
 	base := time.Now().UTC().Add(time.Hour)
@@ -693,8 +694,8 @@ func TestListUserConversationsLastMessageAndActivityOrder(t *testing.T) {
 		t.Fatalf("conversation count: got %d, want %d", got, want)
 	}
 
-	// recent has the newest message, busy the older ones, and the empty
-	// group only its creation time, which is before both.
+	// recent tem a mensagem mais nova, busy as mais antigas, e o grupo
+	// vazio só o horário de criação, que é anterior às duas.
 	order := []int64{convs[0].ID, convs[1].ID, convs[2].ID}
 	if want := []int64{recent.ID, busy.ID, empty.ID}; fmt.Sprint(order) != fmt.Sprint(want) {
 		t.Errorf("order: got %v, want %v (recent, busy, empty)", order, want)
@@ -717,9 +718,9 @@ func TestListUserConversationsLastMessageAndActivityOrder(t *testing.T) {
 	}
 }
 
-// TestApplyReceiptsBatch covers the batched watermark write: it is
-// monotonic, reading implies delivery, and a member who already left is
-// skipped without failing the batch.
+// TestApplyReceiptsBatch cobre a gravação em lote das marcas: ela é
+// monotônica, ler implica entrega, e um membro que já saiu é pulado sem
+// derrubar o lote.
 func TestApplyReceiptsBatch(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -737,10 +738,10 @@ func TestApplyReceiptsBatch(t *testing.T) {
 	}
 
 	err := s.ApplyReceipts(ctx, []Receipt{
-		{ConversationID: group.ID, UserID: bob.ID, Delivered: 4},           // older: ignored
-		{ConversationID: group.ID, UserID: alice.ID, Read: 7},              // read implies delivered
-		{ConversationID: group.ID, UserID: carol.ID, Delivered: 3},         // no longer a member
-		{ConversationID: group.ID, UserID: bob.ID, Delivered: 12, Read: 2}, // advances both
+		{ConversationID: group.ID, UserID: bob.ID, Delivered: 4},           // mais antiga: ignorada
+		{ConversationID: group.ID, UserID: alice.ID, Read: 7},              // leitura implica entrega
+		{ConversationID: group.ID, UserID: carol.ID, Delivered: 3},         // não é mais membro
+		{ConversationID: group.ID, UserID: bob.ID, Delivered: 12, Read: 2}, // avança as duas
 	})
 	if err != nil {
 		t.Fatalf("ApplyReceipts() failed: %v", err)

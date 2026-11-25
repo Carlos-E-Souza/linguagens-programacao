@@ -1,23 +1,23 @@
-// Package models defines the domain types shared by the whole server.
+// Pacote models define os tipos de domínio compartilhados por todo o servidor.
 package models
 
 import "time"
 
-// Conversation type values. Stored in the type column and sent as-is to
-// the client, so both sides always agree on the spelling.
+// Valores de tipo de conversa. Gravados na coluna type e enviados como
+// estão ao cliente, para os dois lados sempre concordarem na grafia.
 const (
 	ConversationDirect = "direct"
 	ConversationGroup  = "group"
 )
 
-// Member role values.
+// Valores de papel do membro.
 const (
 	RoleAdmin  = "admin"
 	RoleMember = "member"
 )
 
-// Message delivery states. pending and failed are client-side only; the
-// server tracks the rest through last_delivered and last_read.
+// Estados de entrega da mensagem. pending e failed existem só no cliente;
+// o servidor acompanha os demais por last_delivered e last_read.
 const (
 	StatusPending   = "pending"
 	StatusSent      = "sent"
@@ -26,8 +26,8 @@ const (
 	StatusFailed    = "failed"
 )
 
-// User is a registered account. The password hash is never serialized:
-// the json:"-" tag guarantees it cannot leak into an API response.
+// User é uma conta cadastrada. O hash da senha nunca é serializado: a tag
+// json:"-" garante que ele não vaze numa resposta da API.
 type User struct {
 	ID           int64     `json:"id"`
 	Username     string    `json:"username"`
@@ -36,7 +36,7 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// Conversation is a direct (1:1) or group chat.
+// Conversation é uma conversa individual (1:1) ou em grupo.
 type Conversation struct {
 	ID           int64     `json:"id"`
 	Type         string    `json:"type"`
@@ -45,14 +45,14 @@ type Conversation struct {
 	LastSequence int64     `json:"last_sequence"`
 	CreatedAt    time.Time `json:"created_at"`
 
-	// Populated on read, not stored on the conversation row itself.
+	// Preenchido na leitura, não gravado na própria linha da conversa.
 	Members     []Member `json:"members,omitempty"`
 	UnreadCount int      `json:"unread_count"`
-	LastMessage *Message `json:"last_message,omitempty"` // nil when the conversation has no message yet
+	LastMessage *Message `json:"last_message,omitempty"` // nil quando a conversa ainda não tem mensagem
 }
 
-// Member links a user to a conversation and tracks how far that user has
-// received and read the conversation's messages.
+// Member liga um usuário a uma conversa e registra até onde esse usuário
+// recebeu e leu as mensagens da conversa.
 type Member struct {
 	ConversationID int64     `json:"conversation_id"`
 	UserID         int64     `json:"user_id"`
@@ -61,17 +61,17 @@ type Member struct {
 	LastRead       int64     `json:"last_read"`
 	JoinedAt       time.Time `json:"joined_at"`
 
-	// Populated by joins for display; not columns of this table.
+	// Preenchidos por joins para exibição; não são colunas desta tabela.
 	Username    string `json:"username,omitempty"`
 	DisplayName string `json:"display_name,omitempty"`
 	Online      bool   `json:"online"`
 }
 
-// Message is a single chat message inside a conversation.
+// Message é uma única mensagem de chat dentro de uma conversa.
 //
-// Sequence orders messages within a conversation and is assigned by the
-// hub, never by the client. ClientID is the UUID the client generates to
-// deduplicate retries after a reconnect.
+// Sequence ordena as mensagens dentro de uma conversa e é atribuída pelo
+// hub, nunca pelo cliente. ClientID é o UUID que o cliente gera para
+// deduplicar as novas tentativas após uma reconexão.
 type Message struct {
 	ID             int64     `json:"id"`
 	ConversationID int64     `json:"conversation_id"`

@@ -1,0 +1,63 @@
+goroutine profile: total 14
+4 @ 0x48acae 0x467445 0x93ef2d 0x492681
+#	0x93ef2c	github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/store.(*Pool).worker+0x16c	/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/internal/store/pool.go:180
+
+1 @ 0x420fa9 0x48cf38 0x6d97b3 0x492681
+#	0x48cf37	os/signal.signal_recv+0x97	/usr/local/go/src/runtime/sigqueue.go:152
+#	0x6d97b2	os/signal.loop+0x12		/usr/local/go/src/os/signal/signal_unix.go:23
+
+1 @ 0x449271 0x489add 0x6bc511 0x6bc345 0x6b91c9 0x6d336a 0x6d3dfa 0x67dd09 0x67faa7 0x68660e 0x67bf90 0x492681
+#	0x6bc510	runtime/pprof.writeRuntimeProfile+0xb0	/usr/local/go/src/runtime/pprof/pprof.go:851
+#	0x6bc344	runtime/pprof.writeGoroutine+0x44	/usr/local/go/src/runtime/pprof/pprof.go:784
+#	0x6b91c8	runtime/pprof.(*Profile).WriteTo+0x148	/usr/local/go/src/runtime/pprof/pprof.go:408
+#	0x6d3369	net/http/pprof.handler.ServeHTTP+0x529	/usr/local/go/src/net/http/pprof/pprof.go:273
+#	0x6d3df9	net/http/pprof.Index+0xd9		/usr/local/go/src/net/http/pprof/pprof.go:397
+#	0x67dd08	net/http.HandlerFunc.ServeHTTP+0x28	/usr/local/go/src/net/http/server.go:2286
+#	0x67faa6	net/http.(*ServeMux).ServeHTTP+0x1c6	/usr/local/go/src/net/http/server.go:2828
+#	0x68660d	net/http.serverHandler.ServeHTTP+0x8d	/usr/local/go/src/net/http/server.go:3311
+#	0x67bf8f	net/http.(*conn).serve+0x64f		/usr/local/go/src/net/http/server.go:2073
+
+1 @ 0x48acae 0x44c757 0x489e85 0x4e1687 0x4e2cac 0x4e2c9a 0x58d449 0x59d15b 0x59c550 0x68158c 0x681172 0x94165b 0x492681
+#	0x489e84	internal/poll.runtime_pollWait+0x84		/usr/local/go/src/runtime/netpoll.go:351
+#	0x4e1686	internal/poll.(*pollDesc).wait+0x26		/usr/local/go/src/internal/poll/fd_poll_runtime.go:84
+#	0x4e2cab	internal/poll.(*pollDesc).waitRead+0x28b	/usr/local/go/src/internal/poll/fd_poll_runtime.go:89
+#	0x4e2c99	internal/poll.(*FD).Accept+0x279		/usr/local/go/src/internal/poll/fd_unix.go:613
+#	0x58d448	net.(*netFD).accept+0x28			/usr/local/go/src/net/fd_unix.go:150
+#	0x59d15a	net.(*TCPListener).accept+0x1a			/usr/local/go/src/net/tcpsock_posix.go:159
+#	0x59c54f	net.(*TCPListener).Accept+0x2f			/usr/local/go/src/net/tcpsock.go:387
+#	0x68158b	net/http.(*Server).Serve+0x30b			/usr/local/go/src/net/http/server.go:3434
+#	0x681171	net/http.(*Server).ListenAndServe+0x71		/usr/local/go/src/net/http/server.go:3360
+#	0x94165a	main.run.func2+0xba				/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:114
+
+1 @ 0x48acae 0x44c757 0x489e85 0x4e1687 0x4e2cac 0x4e2c9a 0x58d449 0x59d15b 0x59c550 0x68158c 0x681172 0x941fa5 0x492681
+#	0x489e84	internal/poll.runtime_pollWait+0x84		/usr/local/go/src/runtime/netpoll.go:351
+#	0x4e1686	internal/poll.(*pollDesc).wait+0x26		/usr/local/go/src/internal/poll/fd_poll_runtime.go:84
+#	0x4e2cab	internal/poll.(*pollDesc).waitRead+0x28b	/usr/local/go/src/internal/poll/fd_poll_runtime.go:89
+#	0x4e2c99	internal/poll.(*FD).Accept+0x279		/usr/local/go/src/internal/poll/fd_unix.go:613
+#	0x58d448	net.(*netFD).accept+0x28			/usr/local/go/src/net/fd_unix.go:150
+#	0x59d15a	net.(*TCPListener).accept+0x1a			/usr/local/go/src/net/tcpsock_posix.go:159
+#	0x59c54f	net.(*TCPListener).Accept+0x2f			/usr/local/go/src/net/tcpsock.go:387
+#	0x68158b	net/http.(*Server).Serve+0x30b			/usr/local/go/src/net/http/server.go:3434
+#	0x681171	net/http.(*Server).ListenAndServe+0x71		/usr/local/go/src/net/http/server.go:3360
+#	0x941fa4	main.startDebugServer.func1+0xc4		/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:186
+
+1 @ 0x48acae 0x467445 0x6d929c 0x492681
+#	0x6d929b	os/signal.NotifyContext.func1+0x7b	/usr/local/go/src/os/signal/signal.go:292
+
+1 @ 0x48acae 0x467445 0x6ed809 0x492681
+#	0x6ed808	database/sql.(*DB).connectionOpener+0x88	/usr/local/go/src/database/sql/sql.go:1261
+
+1 @ 0x48acae 0x467445 0x92f8ee 0x941c0f 0x492681
+#	0x92f8ed	github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/hub.(*Hub).Run+0x26d	/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/internal/hub/hub.go:198
+#	0x941c0e	main.run.func1+0x4e									/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:86
+
+1 @ 0x48acae 0x467445 0x93468e 0x492681
+#	0x93468d	github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/hub.(*Hub).runReceiptWriter+0x1ad	/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/internal/hub/messages.go:393
+
+1 @ 0x48acae 0x467445 0x9412c5 0x940057 0x453c95 0x492681
+#	0x9412c4	main.run+0x11c4		/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:121
+#	0x940056	main.main+0x16		/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:29
+#	0x453c94	runtime.main+0x2d4	/usr/local/go/src/runtime/proc.go:290
+
+1 @ 0x492681
+

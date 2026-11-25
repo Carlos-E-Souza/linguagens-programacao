@@ -35,3 +35,5 @@ go.work.sum
 AGENTS.md
 CLAUDE.md
 PROJECT_OVERVIEW.md
+/docs/
+.superpowers/

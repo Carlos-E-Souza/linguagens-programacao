@@ -1,0 +1,96 @@
+heap profile: 6: 399744 [6: 399745] @ heap/1048576
+0: 0 [0: 0] @ 0x488625 0x423d25 0x681649 0x68163d 0x681172 0x941fa5 0x492681
+#	0x681648	net/http.(*Server).newConn+0x3c8	/usr/local/go/src/net/http/server.go:635
+#	0x68163c	net/http.(*Server).Serve+0x3bc		/usr/local/go/src/net/http/server.go:3462
+#	0x681171	net/http.(*Server).ListenAndServe+0x71	/usr/local/go/src/net/http/server.go:3360
+#	0x941fa4	main.startDebugServer.func1+0xc4	/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:186
+
+1: 32 [1: 32] @ 0x48864c 0x423d25 0x5a0737 0x59ca15 0x59a95e 0x599c74 0x5933d8 0x59d268 0x59562c 0x59562d 0x58567d 0x585958 0x681151 0x941fa5 0x492681
+#	0x5a0736	net.ipToSockaddr+0x1f6			/usr/local/go/src/net/ipsock_posix.go:222
+#	0x59ca14	net.(*TCPAddr).sockaddr+0x34		/usr/local/go/src/net/tcpsock_posix.go:40
+#	0x59a95d	net.(*netFD).listenStream+0x7d		/usr/local/go/src/net/sock_posix.go:156
+#	0x599c73	net.socket+0x1b3			/usr/local/go/src/net/sock_posix.go:57
+#	0x5933d7	net.internetSocket+0xf7			/usr/local/go/src/net/ipsock_posix.go:167
+#	0x59d267	net.(*sysListener).listenTCPProto+0xa7	/usr/local/go/src/net/tcpsock_posix.go:189
+#	0x59562b	net.(*sysListener).listenTCP+0x8b	/usr/local/go/src/net/tcpsock_posix.go:179
+#	0x59562c	net.(*sysListener).listenMPTCP+0x8c	/usr/local/go/src/net/mptcpsock_linux.go:89
+#	0x58567c	net.(*ListenConfig).Listen+0x33c	/usr/local/go/src/net/dial.go:889
+#	0x585957	net.Listen+0x57				/usr/local/go/src/net/dial.go:968
+#	0x681150	net/http.(*Server).ListenAndServe+0x50	/usr/local/go/src/net/http/server.go:3356
+#	0x941fa4	main.startDebugServer.func1+0xc4	/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:186
+
+1: 96 [1: 96] @ 0x488625 0x423d25 0x438e1a 0x43951f 0x492681
+#	0x488624	runtime.mallocgc+0xa4			/usr/local/go/src/runtime/malloc.go:1202
+#	0x423d24	runtime.newobject+0x24			/usr/local/go/src/runtime/malloc.go:2209
+#	0x438e19	runtime.(*scavengerState).init+0x59	/usr/local/go/src/runtime/mgcscavenge.go:363
+#	0x43951e	runtime.bgscavenge+0x1e			/usr/local/go/src/runtime/mgcscavenge.go:650
+
+1: 2048 [1: 2048] @ 0x48862c 0x423d25 0x457a91 0x4585d5 0x458c90 0x48ae4c 0x45b2fe 0x45b827 0x4572cd 0x4571d5 0x4909ac
+#	0x48862b	runtime.mallocgc+0xab		/usr/local/go/src/runtime/malloc.go:1204
+#	0x423d24	runtime.newobject+0x24		/usr/local/go/src/runtime/malloc.go:2209
+#	0x457a90	runtime.allocm+0x90		/usr/local/go/src/runtime/proc.go:2324
+#	0x4585d4	runtime.newm+0x34		/usr/local/go/src/runtime/proc.go:2870
+#	0x458c8f	runtime.startm+0x12f		/usr/local/go/src/runtime/proc.go:3096
+#	0x48ae4b	runtime.wakep+0xeb		/usr/local/go/src/runtime/proc.go:3243
+#	0x45b2fd	runtime.resetspinning+0x3d	/usr/local/go/src/runtime/proc.go:4034
+#	0x45b826	runtime.schedule+0x126		/usr/local/go/src/runtime/proc.go:4199
+#	0x4572cc	runtime.mstart1+0xcc		/usr/local/go/src/runtime/proc.go:1942
+#	0x4571d4	runtime.mstart0+0x74		/usr/local/go/src/runtime/proc.go:1888
+#	0x4909ab	runtime.mstart+0xb		/usr/local/go/src/runtime/asm_amd64.s:426
+
+1: 2048 [1: 2048] @ 0x48862c 0x423d25 0x457a91 0x4585d5 0x458c90 0x459116 0x459192 0x45b73a 0x45bc45 0x490a35
+#	0x48862b	runtime.mallocgc+0xab		/usr/local/go/src/runtime/malloc.go:1204
+#	0x423d24	runtime.newobject+0x24		/usr/local/go/src/runtime/malloc.go:2209
+#	0x457a90	runtime.allocm+0x90		/usr/local/go/src/runtime/proc.go:2324
+#	0x4585d4	runtime.newm+0x34		/usr/local/go/src/runtime/proc.go:2870
+#	0x458c8f	runtime.startm+0x12f		/usr/local/go/src/runtime/proc.go:3096
+#	0x459115	runtime.handoffp+0x2f5		/usr/local/go/src/runtime/proc.go:3137
+#	0x459191	runtime.stoplockedm+0x51	/usr/local/go/src/runtime/proc.go:3259
+#	0x45b739	runtime.schedule+0x39		/usr/local/go/src/runtime/proc.go:4143
+#	0x45bc44	runtime.park_m+0x284		/usr/local/go/src/runtime/proc.go:4304
+#	0x490a34	runtime.mcall+0x54		/usr/local/go/src/runtime/asm_amd64.s:496
+
+1: 2304 [1: 2304] @ 0x48862c 0x48d1a9 0x49a75c 0x49a5a6 0x49a31c 0x6703e5 0x685c5f 0x676f07 0x67bd18 0x492681
+#	0x49a75b	sync.(*Pool).pinSlow+0x17b		/usr/local/go/src/sync/pool.go:241
+#	0x49a5a5	sync.(*Pool).pin+0x45			/usr/local/go/src/sync/pool.go:220
+#	0x49a31b	sync.(*Pool).Get+0x1b			/usr/local/go/src/sync/pool.go:135
+#	0x6703e4	net/http.newTextprotoReader+0x24	/usr/local/go/src/net/http/request.go:1039
+#	0x685c5e	net/http.readRequest+0x3e		/usr/local/go/src/net/http/request.go:1080
+#	0x676f06	net/http.(*conn).readRequest+0x226	/usr/local/go/src/net/http/server.go:1005
+#	0x67bd17	net/http.(*conn).serve+0x3d7		/usr/local/go/src/net/http/server.go:1995
+
+1: 393216 [1: 393216] @ 0x488653 0x4195cd 0x93e694 0x9406db 0x940057 0x453c95 0x492681
+#	0x93e693	github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/store.NewPool+0x93	/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/internal/store/pool.go:96
+#	0x9406da	main.run+0x5da										/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:75
+#	0x940056	main.main+0x16										/home/user/workspaces/linguagens-programacao/linguagens-programacao/back-end/cmd/server/main.go:29
+#	0x453c94	runtime.main+0x2d4									/usr/local/go/src/runtime/proc.go:290
+
+
+# runtime.MemStats
+# Alloc = 1524488
+# TotalAlloc = 1524488
+# Sys = 13064456
+# Lookups = 0
+# Mallocs = 3562
+# Frees = 394
+# HeapAlloc = 1524488
+# HeapSys = 7766016
+# HeapIdle = 4923392
+# HeapInuse = 2842624
+# HeapReleased = 4857856
+# HeapObjects = 3168
+# Stack = 622592 / 622592
+# MSpan = 58080 / 65280
+# MCache = 36736 / 48216
+# BuckHashSys = 1445279
+# GCSys = 1888528
+# OtherSys = 1228545
+# NextGC = 4194304
+# LastGC = 0
+# PauseNs = [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+# PauseEnd = [0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+# NumGC = 0
+# NumForcedGC = 0
+# GCCPUFraction = 0
+# DebugGC = false
+# MaxRSS = 15388672

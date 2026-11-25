@@ -1,19 +1,18 @@
-// Package store persists messages asynchronously through a pool of
-// worker goroutines.
+// Pacote store persiste mensagens de forma assíncrona por meio de um pool
+// de goroutines workers.
 //
-// Writing to the database inside the hub loop would make delivery wait
-// on disk, so the hub only enqueues a message and returns. A fixed
-// number of workers (PERSISTENCE_WORKERS) consumes that queue, batches
-// the messages and writes each batch in a single transaction, which
-// amortises the cost of fsync across many inserts.
+// Gravar no banco dentro do laço do hub faria a entrega esperar o disco,
+// então o hub só enfileira a mensagem e retorna. Um número fixo de
+// workers (PERSISTENCE_WORKERS) consome essa fila, agrupa as mensagens em
+// lotes e grava cada lote numa única transação, o que dilui o custo do
+// fsync entre muitas inserções.
 //
-// Enqueue applies backpressure instead of dropping data: when the queue
-// is full it blocks with a timeout. Shutdown closes the queue and waits
-// for the workers to drain it within the context deadline, which is how
-// the graceful shutdown guarantees that every acknowledged message is
-// on disk before the process exits.
+// Enqueue aplica backpressure em vez de descartar dados: quando a fila
+// está cheia, ele bloqueia com timeout. Shutdown fecha a fila e espera os
+// workers a drenarem dentro do prazo do contexto, e é assim que o
+// desligamento gracioso garante que toda mensagem confirmada está no
+// disco antes de o processo sair.
 //
-// Ordering in the table does not matter, since the display order is
-// given by the sequence column, so the workers can write in parallel
-// without coordination.
+// A ordem na tabela não importa, já que a ordem de exibição vem da coluna
+// sequence, então os workers podem gravar em paralelo sem coordenação.
 package store

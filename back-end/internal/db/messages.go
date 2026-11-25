@@ -9,16 +9,16 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// messageColumns is the projection shared by every message query.
+// messageColumns é a projeção comum a todas as consultas de mensagem.
 const messageColumns = `
 	id, conversation_id, sequence, sender_id, client_id, body, created_at`
 
-// InsertMessages writes a batch of messages in one transaction.
+// InsertMessages grava um lote de mensagens numa transação.
 //
-// ON CONFLICT DO NOTHING targets (sender_id, client_id): a client that
-// resends after a reconnect may reach the database twice, and the unique
-// index is what makes that harmless. The per-message outcome is returned
-// so the caller can tell an insert from a duplicate.
+// ON CONFLICT DO NOTHING mira (sender_id, client_id): um cliente que
+// reenvia depois de reconectar pode chegar ao banco duas vezes, e o índice
+// único é o que torna isso inofensivo. O resultado de cada mensagem é
+// devolvido para que quem chamou distinga uma inserção de uma duplicata.
 func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) ([]models.Message, error) {
 	if len(messages) == 0 {
 		return nil, nil
@@ -51,9 +51,9 @@ func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) (
 				return fmt.Errorf("insert message: read affected rows: %w", err)
 			}
 
-			// A duplicate (same sender and client_id) affects no row and
-			// is simply not reported back, which is what makes a resend
-			// harmless.
+			// Uma duplicata (mesmo remetente e client_id) não afeta
+			// nenhuma linha e simplesmente não é devolvida, o que torna o
+			// reenvio inofensivo.
 			if affected == 0 {
 				continue
 			}
@@ -65,8 +65,8 @@ func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) (
 			msg.ID = id
 			stored = append(stored, msg)
 
-			// The guard `last_sequence < ?` keeps the counter monotonic
-			// even though several workers commit batches out of order.
+			// A condição `last_sequence < ?` mantém o contador monotônico
+			// mesmo com vários workers confirmando lotes fora de ordem.
 			if _, err := tx.ExecContext(ctx, bumpSequence,
 				msg.Sequence, msg.ConversationID, msg.Sequence); err != nil {
 				return fmt.Errorf("update last_sequence: %w", err)
@@ -81,9 +81,9 @@ func (s *Store) InsertMessages(ctx context.Context, messages []models.Message) (
 	return stored, nil
 }
 
-// LastSequence returns the highest sequence assigned in a conversation,
-// or 0 when there are no messages yet. The hub uses it to prime its
-// in-memory counter on restart.
+// LastSequence devolve a maior sequence atribuída numa conversa, ou 0
+// quando ainda não há mensagens. O hub a usa para inicializar seu
+// contador em memória ao reiniciar.
 func (s *Store) LastSequence(ctx context.Context, conversationID int64) (int64, error) {
 	const query = `SELECT last_sequence FROM conversations WHERE id = ?`
 
@@ -99,12 +99,12 @@ func (s *Store) LastSequence(ctx context.Context, conversationID int64) (int64, 
 	return sequence, nil
 }
 
-// ListMessages returns up to limit messages from a conversation,
-// newest first, optionally older than beforeSequence.
+// ListMessages devolve até limit mensagens de uma conversa, das mais
+// novas para as mais antigas, opcionalmente anteriores a beforeSequence.
 //
-// The query walks backwards (sequence < before, DESC) so that the page
-// is the most recent window, then reverses in Go to hand the caller
-// ascending order, which is what a chat view renders.
+// A consulta anda para trás (sequence < before, DESC) para que a página
+// seja a janela mais recente, e depois é invertida em Go para entregar a
+// ordem crescente, que é o que a tela de chat desenha.
 func (s *Store) ListMessages(ctx context.Context, conversationID, beforeSequence int64, limit int) ([]models.Message, error) {
 	query := `
 		SELECT ` + messageColumns + `
@@ -129,9 +129,9 @@ func (s *Store) ListMessages(ctx context.Context, conversationID, beforeSequence
 	return messages, nil
 }
 
-// ListMessagesAfter returns every message with a sequence greater than
-// the given one, in ascending order. This is the backfill used when a
-// client reconnects and asks for what it missed.
+// ListMessagesAfter devolve todas as mensagens com sequence maior que a
+// informada, em ordem crescente. É o preenchimento usado quando um
+// cliente reconecta e pede o que perdeu.
 func (s *Store) ListMessagesAfter(ctx context.Context, conversationID, afterSequence int64, limit int) ([]models.Message, error) {
 	query := `
 		SELECT ` + messageColumns + `
@@ -149,11 +149,11 @@ func (s *Store) ListMessagesAfter(ctx context.Context, conversationID, afterSequ
 	return scanMessages(rows)
 }
 
-// MarkDelivered advances the member's delivered watermark.
+// MarkDelivered avança a marca de entrega do membro.
 //
-// MAX(current, new) makes the update monotonic: an out-of-order
-// acknowledgement can never move the watermark backwards, which would
-// otherwise resurrect an already-delivered badge.
+// MAX(atual, novo) torna a atualização monotônica: uma confirmação fora
+// de ordem nunca pode mover a marca para trás, o que faria reaparecer um
+// indicador já entregue.
 func (s *Store) MarkDelivered(ctx context.Context, conversationID, userID, upToSequence int64) error {
 	const query = `
 		UPDATE conversation_members
@@ -168,8 +168,8 @@ func (s *Store) MarkDelivered(ctx context.Context, conversationID, userID, upToS
 	return requireAffected(result, "mark delivered")
 }
 
-// MarkRead advances the member's read watermark, and the delivered one
-// with it, since reading implies delivery.
+// MarkRead avança a marca de leitura do membro, e junto a de entrega, já
+// que ler implica ter recebido.
 func (s *Store) MarkRead(ctx context.Context, conversationID, userID, upToSequence int64) error {
 	const query = `
 		UPDATE conversation_members
@@ -185,9 +185,9 @@ func (s *Store) MarkRead(ctx context.Context, conversationID, userID, upToSequen
 	return requireAffected(result, "mark read")
 }
 
-// Receipt is the combined confirmation state of one member in one
-// conversation, as accumulated by the hub between two writes. A zero
-// watermark means "no change" for that column.
+// Receipt é o estado combinado de confirmação de um membro numa conversa,
+// acumulado pelo hub entre duas gravações. Uma marca zero significa "sem
+// mudança" para aquela coluna.
 type Receipt struct {
 	ConversationID int64
 	UserID         int64
@@ -195,14 +195,14 @@ type Receipt struct {
 	Read           int64
 }
 
-// ApplyReceipts writes many confirmations in one transaction.
+// ApplyReceipts grava muitas confirmações numa transação.
 //
-// The hub folds every delivered/read confirmation that arrives within a
-// short window into one Receipt per member, so a burst of confirmations
-// costs one transaction instead of one write each. The update is the same
-// monotonic MAX as MarkDelivered/MarkRead, and reading still implies
-// delivery. A member that left the conversation in the meantime simply
-// matches no row, which is not an error here.
+// O hub junta toda confirmação de entrega/leitura que chega numa janela
+// curta num único Receipt por membro, então uma rajada de confirmações
+// custa uma transação em vez de uma gravação cada. A atualização usa o
+// mesmo MAX monotônico de MarkDelivered/MarkRead, e ler continua
+// implicando entrega. Um membro que saiu da conversa nesse meio-tempo
+// simplesmente não casa com nenhuma linha, o que não é erro aqui.
 func (s *Store) ApplyReceipts(ctx context.Context, receipts []Receipt) error {
 	if len(receipts) == 0 {
 		return nil
@@ -226,8 +226,9 @@ func (s *Store) ApplyReceipts(ctx context.Context, receipts []Receipt) error {
 	})
 }
 
-// requireAffected turns a zero-row update into ErrNotFound, so a status
-// update from a non-member is reported instead of silently ignored.
+// requireAffected converte uma atualização sem linhas afetadas em
+// ErrNotFound, para que um status vindo de quem não é membro seja
+// informado em vez de ignorado em silêncio.
 func requireAffected(result sql.Result, action string) error {
 	affected, err := result.RowsAffected()
 	if err != nil {
@@ -239,7 +240,7 @@ func requireAffected(result sql.Result, action string) error {
 	return nil
 }
 
-// scanMessages drains a result set into a slice.
+// scanMessages consome um resultado de consulta para um slice.
 func scanMessages(rows *sql.Rows) ([]models.Message, error) {
 	messages := make([]models.Message, 0)
 	for rows.Next() {
@@ -258,8 +259,8 @@ func scanMessages(rows *sql.Rows) ([]models.Message, error) {
 	return messages, nil
 }
 
-// reverseMessages flips the slice in place, turning the DESC result of
-// ListMessages into the ascending order the API promises.
+// reverseMessages inverte o slice no lugar, transformando o resultado DESC
+// de ListMessages na ordem crescente que a API promete.
 func reverseMessages(messages []models.Message) {
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]

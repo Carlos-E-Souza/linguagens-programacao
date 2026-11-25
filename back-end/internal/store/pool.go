@@ -1,5 +1,5 @@
-// Package store persists messages asynchronously through a pool of
-// worker goroutines.
+// Pacote store persiste mensagens de forma assíncrona por meio de um pool
+// de goroutines workers.
 package store
 
 import (
@@ -12,24 +12,24 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// queued is one message waiting to be written, together with the channel
-// its caller is watching for the stored row.
+// queued é uma mensagem esperando gravação, junto com o canal em que quem
+// chamou aguarda a linha gravada.
 type queued struct {
 	message models.Message
 	stored  chan models.Message
 }
 
-// batchWriter is the part of db.Store this package needs. Depending on a
-// narrow interface keeps the pool unaware of the rest of the data layer
-// and easy to test with a fake.
+// batchWriter é a parte de db.Store de que este pacote precisa. Depender
+// de uma interface estreita mantém o pool alheio ao resto da camada de
+// dados e fácil de testar com um dublê.
 type batchWriter interface {
 	InsertMessages(ctx context.Context, messages []models.Message) ([]models.Message, error)
 }
 
-// Pool writes messages to the database in the background.
+// Pool grava mensagens no banco em segundo plano.
 //
-// Writing inside the hub loop would make message delivery wait on disk,
-// so the hub only enqueues and returns; the workers do the I/O.
+// Gravar dentro do laço do hub faria a entrega das mensagens esperar o
+// disco, então o hub só enfileira e retorna; os workers fazem o I/O.
 type Pool struct {
 	writer batchWriter
 	queue  chan queued
@@ -44,23 +44,23 @@ type Pool struct {
 	closed  bool
 }
 
-// Options configures a Pool.
+// Options configura um Pool.
 type Options struct {
-	// Workers is how many goroutines write batches concurrently.
+	// Workers é quantas goroutines gravam lotes ao mesmo tempo.
 	Workers int
-	// QueueSize is the buffer between the hub and the workers.
+	// QueueSize é o buffer entre o hub e os workers.
 	QueueSize int
-	// BatchSize is how many messages a worker accumulates before writing.
+	// BatchSize é quantas mensagens um worker acumula antes de gravar.
 	BatchSize int
-	// FlushEvery bounds how long a message may sit unwritten while the
-	// batch is not yet full.
+	// FlushEvery limita quanto tempo uma mensagem pode ficar sem gravação
+	// enquanto o lote ainda não encheu.
 	FlushEvery time.Duration
-	// EnqueueWait is how long Enqueue blocks when the queue is full
-	// before giving up, applying backpressure instead of dropping data.
+	// EnqueueWait é quanto tempo Enqueue bloqueia com a fila cheia antes
+	// de desistir, aplicando backpressure em vez de descartar dados.
 	EnqueueWait time.Duration
 }
 
-// DefaultOptions returns the production defaults.
+// DefaultOptions devolve os padrões de produção.
 func DefaultOptions(queueSize, workers int) Options {
 	return Options{
 		Workers:     workers,
@@ -71,12 +71,12 @@ func DefaultOptions(queueSize, workers int) Options {
 	}
 }
 
-// NewPool starts the worker goroutines.
+// NewPool inicia as goroutines workers.
 //
-// The pool deliberately takes no context: the only way to stop the
-// workers is Shutdown, which drains the queue first. A cancellable
-// context here once made the workers exit on SIGTERM while the hub was
-// still acknowledging messages, losing everything left in the queue.
+// O pool não recebe contexto de propósito: a única forma de parar os
+// workers é Shutdown, que drena a fila primeiro. Um contexto cancelável
+// aqui já fez os workers saírem no SIGTERM enquanto o hub ainda
+// confirmava mensagens, perdendo tudo o que restava na fila.
 func NewPool(writer batchWriter, opts Options) *Pool {
 	if opts.Workers < 1 {
 		opts.Workers = 1
@@ -108,21 +108,21 @@ func NewPool(writer batchWriter, opts Options) *Pool {
 	return p
 }
 
-// Enqueue hands a message to the workers and returns a channel that
-// receives the stored row once the batch has been committed.
+// Enqueue entrega uma mensagem aos workers e devolve um canal que recebe
+// a linha gravada depois que o lote é confirmado.
 //
-// The caller may read from that channel to learn the database-assigned
-// ID, or ignore it entirely, in which case nothing blocks: the channel is
-// buffered with room for exactly one value and the worker never waits on
-// it. This is what lets the hub offer a real message ID in the
-// acknowledgement without making persistence synchronous.
+// Quem chama pode ler desse canal para saber o ID atribuído pelo banco, ou
+// ignorá-lo por completo, e nesse caso nada bloqueia: o canal tem buffer
+// para exatamente um valor e o worker nunca espera por ele. É isso que
+// permite ao hub oferecer um ID real de mensagem no ACK sem tornar a
+// persistência síncrona.
 //
-// When the queue is full it waits, applying backpressure to the hub
-// rather than discarding the message: a message that was acknowledged
-// must eventually reach the database.
+// Quando a fila está cheia, ele espera, aplicando backpressure ao hub em
+// vez de descartar a mensagem: uma mensagem confirmada precisa chegar ao
+// banco em algum momento.
 func (p *Pool) Enqueue(ctx context.Context, msg models.Message) (<-chan models.Message, error) {
-	// Buffered so the worker can always deliver the result and move on,
-	// even if the caller stopped caring about it.
+	// Com buffer para que o worker sempre consiga entregar o resultado e
+	// seguir em frente, mesmo que quem chamou não se importe mais com ele.
 	stored := make(chan models.Message, 1)
 
 	p.closeMu.Lock()
@@ -157,8 +157,8 @@ func (p *Pool) Enqueue(ctx context.Context, msg models.Message) (<-chan models.M
 	}
 }
 
-// worker consumes the queue, batches and writes. It returns only when
-// the queue is closed and fully drained.
+// worker consome a fila, agrupa em lotes e grava. Só retorna quando a
+// fila está fechada e totalmente drenada.
 func (p *Pool) worker(id int) {
 	defer p.wg.Done()
 
@@ -195,13 +195,14 @@ func (p *Pool) worker(id int) {
 	}
 }
 
-// persistBatch writes one batch and reports the stored rows back to the
-// callers that are waiting for them.
+// persistBatch grava um lote e informa as linhas gravadas a quem está
+// esperando por elas.
 //
-// The write gets its own context: the pool's context may already be
-// cancelled during shutdown, and the whole point of draining is to finish
-// these writes. Every waiter is answered on both paths, so a caller
-// blocked on the result channel is never left hanging.
+// A gravação tem contexto próprio: o contexto do pool pode já estar
+// cancelado durante o desligamento, e o sentido de drenar é justamente
+// concluir estas gravações. Todo aguardante recebe resposta nos dois
+// caminhos, então quem está bloqueado no canal de resultado nunca fica
+// pendurado.
 func (p *Pool) persistBatch(workerID int, batch []queued) {
 	writeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -216,17 +217,17 @@ func (p *Pool) persistBatch(workerID int, batch []queued) {
 		slog.Error("persistence failed, messages lost",
 			"worker", workerID, "count", len(batch), "error", err)
 
-		// The callers are told nothing rather than being left blocked:
-		// a zero value means "not stored", which the hub turns into an
-		// acknowledgement without an ID.
+		// Quem chamou recebe uma resposta vazia em vez de ficar
+		// bloqueado: um valor zero significa "não gravada", que o hub
+		// transforma num ACK sem ID.
 		for _, item := range batch {
 			item.stored <- models.Message{}
 		}
 		return
 	}
 
-	// The writer returns only the rows it actually inserted, in order, so
-	// duplicates are matched by client_id rather than by position.
+	// O gravador devolve só as linhas que de fato inseriu, em ordem, então
+	// as duplicatas são casadas pelo client_id e não pela posição.
 	byClientID := make(map[string]models.Message, len(stored))
 	for _, msg := range stored {
 		byClientID[msg.ClientID] = msg
@@ -235,8 +236,8 @@ func (p *Pool) persistBatch(workerID int, batch []queued) {
 	for _, item := range batch {
 		msg, ok := byClientID[item.message.ClientID]
 		if !ok {
-			// A duplicate: the row already existed from an earlier
-			// insert, so no new ID is reported.
+			// Uma duplicata: a linha já existia de uma inserção anterior,
+			// então nenhum ID novo é informado.
 			item.stored <- models.Message{}
 			continue
 		}
@@ -244,10 +245,11 @@ func (p *Pool) persistBatch(workerID int, batch []queued) {
 	}
 }
 
-// writeWithRetry attempts a batch a few times before giving up.
+// writeWithRetry tenta gravar um lote algumas vezes antes de desistir.
 //
-// A transient lock contention is worth retrying; a permanent failure is
-// logged with the full batch so the data is at least recoverable by hand.
+// Uma disputa momentânea por trava vale nova tentativa; uma falha
+// permanente é registrada no log com o lote inteiro, para que os dados ao
+// menos possam ser recuperados à mão.
 func (p *Pool) writeWithRetry(ctx context.Context, batch []models.Message) ([]models.Message, error) {
 	const attempts = 3
 
@@ -273,11 +275,11 @@ func (p *Pool) writeWithRetry(ctx context.Context, batch []models.Message) ([]mo
 	return nil, lastErr
 }
 
-// Shutdown stops accepting new messages and waits for the queue to drain.
+// Shutdown para de aceitar novas mensagens e espera a fila ser drenada.
 //
-// Closing the channel is what tells the workers to finish: each one
-// flushes its pending batch before returning, so a graceful shutdown
-// loses nothing that was accepted.
+// Fechar o canal é o que avisa os workers para terminar: cada um despacha
+// o lote pendente antes de retornar, então um desligamento gracioso não
+// perde nada do que foi aceito.
 func (p *Pool) Shutdown(ctx context.Context) error {
 	p.closeMu.Lock()
 	if p.closed {

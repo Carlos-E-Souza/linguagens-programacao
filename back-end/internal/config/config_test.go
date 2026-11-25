@@ -5,27 +5,27 @@ import (
 	"time"
 )
 
-// TestLoadDefaults checks that every field falls back to the
-// documented default when the environment is completely empty.
-// t.Setenv temporarily sets an environment variable and restores the
-// previous value automatically when the test ends; it also marks the
-// test as non-parallel-safe, which is fine here because only one
-// goroutine touches the environment at a time.
+// TestLoadDefaults confere que todo campo cai no padrão documentado
+// quando o ambiente está completamente vazio.
+// t.Setenv define temporariamente uma variável de ambiente e restaura o
+// valor anterior automaticamente ao fim do teste; ele também marca o
+// teste como não paralelizável, o que não é problema aqui porque só uma
+// goroutine mexe no ambiente por vez.
 func TestLoadDefaults(t *testing.T) {
-	// Point the loader at an empty, controlled environment.
+	// Aponta o carregador para um ambiente vazio e controlado.
 	t.Setenv("SERVER_ADDRESS", "")
 	t.Setenv("DATABASE_PATH", "")
 	t.Setenv("JWT_SECRET", "")
 	t.Setenv("PERSISTENCE_WORKERS", "")
-	t.Setenv("DEV_MODE", "true") // tolerate the empty secret in this test
+	t.Setenv("DEV_MODE", "true") // tolera o segredo vazio neste teste
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() returned unexpected error: %v", err)
 	}
 
-	// got/want pairs: the idiomatic mismatch report, so the failure
-	// line shows both values at once.
+	// Pares got/want: o relatório de divergência idiomático, para a linha
+	// de falha mostrar os dois valores de uma vez.
 	if got, want := cfg.ServerAddress, ":8080"; got != want {
 		t.Errorf("ServerAddress: got %q, want %q", got, want)
 	}
@@ -52,9 +52,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-// TestLoadDevModeSuppliesSecret covers the gap between "DEV_MODE
-// tolerates a missing secret" and "the token issuer refuses an empty
-// one": without a placeholder the server would start and then fail.
+// TestLoadDevModeSuppliesSecret cobre a lacuna entre "DEV_MODE tolera um
+// segredo ausente" e "o emissor de tokens recusa um segredo vazio": sem
+// uma chave provisória o servidor subiria e depois falharia.
 func TestLoadDevModeSuppliesSecret(t *testing.T) {
 	t.Setenv("JWT_SECRET", "")
 	t.Setenv("DEV_MODE", "true")
@@ -68,9 +68,10 @@ func TestLoadDevModeSuppliesSecret(t *testing.T) {
 	}
 }
 
-// TestPprofRequiresDevMode guards the profiler endpoints: they expose
-// internals and carry no authentication, so enabling them in a
-// production configuration must be refused rather than silently obeyed.
+// TestPprofRequiresDevMode protege os endpoints do profiler: eles expõem
+// detalhes internos e não têm autenticação, então ativá-los numa
+// configuração de produção precisa ser recusado em vez de obedecido em
+// silêncio.
 func TestPprofRequiresDevMode(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret")
 	t.Setenv("DEV_MODE", "false")
@@ -81,7 +82,7 @@ func TestPprofRequiresDevMode(t *testing.T) {
 	}
 }
 
-// TestPprofAllowedInDevMode covers the development path.
+// TestPprofAllowedInDevMode cobre o caminho de desenvolvimento.
 func TestPprofAllowedInDevMode(t *testing.T) {
 	t.Setenv("JWT_SECRET", "")
 	t.Setenv("DEV_MODE", "true")
@@ -99,8 +100,8 @@ func TestPprofAllowedInDevMode(t *testing.T) {
 	}
 }
 
-// TestPprofDisabledByDefault documents that an unset address means no
-// debug server is started.
+// TestPprofDisabledByDefault documenta que um endereço não definido
+// significa que nenhum servidor de depuração é iniciado.
 func TestPprofDisabledByDefault(t *testing.T) {
 	t.Setenv("JWT_SECRET", "test-secret")
 	t.Setenv("DEV_MODE", "false")
@@ -115,9 +116,9 @@ func TestPprofDisabledByDefault(t *testing.T) {
 	}
 }
 
-// TestLoadRejectsEmptySecretOutsideDevMode guards the fail-fast rule:
-// without DEV_MODE, an empty JWT_SECRET must stop the server from
-// starting with an unusable configuration.
+// TestLoadRejectsEmptySecretOutsideDevMode protege a regra de falhar cedo:
+// sem DEV_MODE, um JWT_SECRET vazio precisa impedir o servidor de subir
+// com uma configuração inutilizável.
 func TestLoadRejectsEmptySecretOutsideDevMode(t *testing.T) {
 	t.Setenv("JWT_SECRET", "")
 	t.Setenv("DEV_MODE", "false")
@@ -128,10 +129,10 @@ func TestLoadRejectsEmptySecretOutsideDevMode(t *testing.T) {
 	}
 }
 
-// TestLoadInvalidIntervals exercises the ping/pong validation branch
-// with a table of bad combinations. Table-driven testing keeps the
-// cases as data: adding one is a single line instead of another
-// copy-pasted test body.
+// TestLoadInvalidIntervals exercita o ramo de validação de ping/pong com
+// uma tabela de combinações inválidas. O teste orientado a tabela mantém
+// os casos como dados: acrescentar um é uma linha, e não mais uma cópia
+// do corpo do teste.
 func TestLoadInvalidIntervals(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -149,7 +150,7 @@ func TestLoadInvalidIntervals(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("PING_INTERVAL", tc.pingInterval)
 			t.Setenv("PONG_TIMEOUT", tc.pongTimeout)
-			t.Setenv("JWT_SECRET", "test-secret") // bypass the dev-mode path
+			t.Setenv("JWT_SECRET", "test-secret") // evita o caminho do modo dev
 			t.Setenv("DEV_MODE", "false")
 
 			_, err := Load()

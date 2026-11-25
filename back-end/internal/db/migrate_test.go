@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// newTestDB opens a throwaway database in the test's own temporary
-// directory. t.TempDir() is removed automatically when the test ends, so
-// every test starts from an empty schema.
+// newTestDB abre um banco descartável no diretório temporário do próprio
+// teste. t.TempDir() é removido automaticamente ao fim do teste, então
+// todo teste começa com o schema vazio.
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -23,8 +23,8 @@ func newTestDB(t *testing.T) *sql.DB {
 	return handle
 }
 
-// TestMigrateCreatesSchema checks the migration actually produces the
-// tables the rest of the server depends on.
+// TestMigrateCreatesSchema confere que a migração de fato cria as tabelas
+// de que o resto do servidor depende.
 func TestMigrateCreatesSchema(t *testing.T) {
 	ctx := context.Background()
 	handle := newTestDB(t)
@@ -44,9 +44,9 @@ func TestMigrateCreatesSchema(t *testing.T) {
 	}
 }
 
-// TestMigrateIsIdempotent is the property that matters in production:
-// restarting the server must not try to recreate existing tables, which
-// would fail with "table already exists".
+// TestMigrateIsIdempotent é a propriedade que importa em produção:
+// reiniciar o servidor não pode tentar recriar tabelas existentes, o que
+// falharia com "table already exists".
 func TestMigrateIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	handle := newTestDB(t)
@@ -68,9 +68,9 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestOpenEnablesForeignKeys guards the pragma: without it, the
-// REFERENCES clauses in the schema would be decorative and we could
-// insert a message for a conversation that does not exist.
+// TestOpenEnablesForeignKeys protege o pragma: sem ele, as cláusulas
+// REFERENCES do schema seriam decorativas e daria para inserir uma
+// mensagem numa conversa que não existe.
 func TestOpenEnablesForeignKeys(t *testing.T) {
 	ctx := context.Background()
 	handle := newTestDB(t)
@@ -87,8 +87,9 @@ func TestOpenEnablesForeignKeys(t *testing.T) {
 	}
 }
 
-// TestOpenEnablesWAL checks the journal mode, since a silent fall back
-// to the default would reintroduce reader/writer blocking under load.
+// TestOpenEnablesWAL confere o modo de journal, já que voltar em silêncio
+// ao padrão reintroduziria o bloqueio entre leitores e escritores sob
+// carga.
 func TestOpenEnablesWAL(t *testing.T) {
 	handle := newTestDB(t)
 
@@ -101,8 +102,8 @@ func TestOpenEnablesWAL(t *testing.T) {
 	}
 }
 
-// TestMigrationFilesAreOrdered documents the naming contract: the
-// lexical sort of the embedded files is the order they get applied in.
+// TestMigrationFilesAreOrdered documenta o contrato de nomes: a ordem
+// lexical dos arquivos embutidos é a ordem em que são aplicados.
 func TestMigrationFilesAreOrdered(t *testing.T) {
 	files, err := migrationFiles()
 	if err != nil {

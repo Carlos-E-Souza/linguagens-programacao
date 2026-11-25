@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-// httptest.NewRecorder is the Go way to test a handler without a real
-// network: it implements http.ResponseWriter and records what was
-// written, so we can assert on status, headers and body.
+// httptest.NewRecorder é a forma Go de testar um handler sem rede real:
+// ele implementa http.ResponseWriter e registra o que foi escrito, para
+// conferirmos status, headers e corpo.
 func TestWriteJSON(t *testing.T) {
 	rec := httptest.NewRecorder()
 
@@ -79,7 +79,7 @@ func TestReadJSON(t *testing.T) {
 	}
 }
 
-// TestReadJSONRejectsOversizedBody proves the MaxBytesReader cap works.
+// TestReadJSONRejectsOversizedBody prova que o limite do MaxBytesReader funciona.
 func TestReadJSONRejectsOversizedBody(t *testing.T) {
 	huge := `{"username":"` + strings.Repeat("a", maxRequestBody+1) + `"}`
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(huge))

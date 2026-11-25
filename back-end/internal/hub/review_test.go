@@ -15,8 +15,8 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// heldPersister accepts messages but answers only when released, which
-// keeps them in the persistence queue for as long as a test needs.
+// heldPersister aceita mensagens mas só responde quando liberado, o que as
+// mantém na fila de persistência pelo tempo que o teste precisar.
 type heldPersister struct {
 	mu      sync.Mutex
 	waiting []chan models.Message
@@ -32,7 +32,7 @@ func (p *heldPersister) Enqueue(ctx context.Context, msg models.Message) (<-chan
 	return ch, nil
 }
 
-// release answers every held message as "not stored".
+// release responde a toda mensagem retida como "não gravada".
 func (p *heldPersister) release() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -42,8 +42,8 @@ func (p *heldPersister) release() {
 	p.waiting = nil
 }
 
-// TestSyncIncludesMessagesStillInTheQueue covers Phase 8: a message that
-// was accepted but not written yet is part of the backfill.
+// TestSyncIncludesMessagesStillInTheQueue cobre a Fase 8: uma mensagem
+// aceita mas ainda não gravada faz parte do preenchimento.
 func TestSyncIncludesMessagesStillInTheQueue(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, conv := f.createUsers(t)
@@ -62,8 +62,8 @@ func TestSyncIncludesMessagesStillInTheQueue(t *testing.T) {
 		f2.submit(aliceClient, mustEnvelope(ws.TypeMessageSend, ws.SendPayload{
 			ClientID: fmt.Sprintf("queued-%d", i), ConversationID: conv.ID, Body: "not written yet",
 		}))
-		// message.new is the sign the hub accepted it; the ACK waits on
-		// the held persister.
+		// message.new é o sinal de que o hub a aceitou; o ACK espera o
+		// persister retido.
 		waitForType(t, aliceClient, ws.TypeMessageNew, 2*time.Second)
 	}
 
@@ -88,7 +88,7 @@ func TestSyncIncludesMessagesStillInTheQueue(t *testing.T) {
 	}
 }
 
-// TestMergeBackfill covers the merge of stored and unconfirmed messages.
+// TestMergeBackfill cobre a combinação de mensagens gravadas e não confirmadas.
 func TestMergeBackfill(t *testing.T) {
 	m := func(seq, id int64) models.Message { return models.Message{Sequence: seq, ID: id} }
 
@@ -103,8 +103,8 @@ func TestMergeBackfill(t *testing.T) {
 	}
 }
 
-// TestSlowClientIsClosedWithPolicyViolation checks the close code the
-// connection gets when the hub drops it for a full queue.
+// TestSlowClientIsClosedWithPolicyViolation confere o código de close que
+// a conexão recebe quando o hub a derruba por fila cheia.
 func TestSlowClientIsClosedWithPolicyViolation(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, _ := f.createUsers(t)
@@ -118,22 +118,22 @@ func TestSlowClientIsClosedWithPolicyViolation(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	client.trySend([]byte(`{"type":"filler"}`)) // queue is now full
+	client.trySend([]byte(`{"type":"filler"}`)) // agora a fila está cheia
 	f.hub.deliverToUser(alice.ID, []byte(`{"type":"overflow"}`))
 
 	if code, _ := client.CloseStatus(); code != websocket.StatusPolicyViolation {
 		t.Errorf("close status: got %v, want %v", code, websocket.StatusPolicyViolation)
 	}
 
-	// The later regular unregister must not overwrite the code.
+	// O unregister normal que vem depois não pode sobrescrever o código.
 	f.hub.Unregister(client)
 	if code, _ := client.CloseStatus(); code != websocket.StatusPolicyViolation {
 		t.Errorf("close status after unregister: got %v, want %v", code, websocket.StatusPolicyViolation)
 	}
 }
 
-// TestShutdownClosesWithGoingAway checks the close code of a graceful
-// shutdown.
+// TestShutdownClosesWithGoingAway confere o código de close de um
+// desligamento gracioso.
 func TestShutdownClosesWithGoingAway(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, _ := f.createUsers(t)
@@ -146,8 +146,8 @@ func TestShutdownClosesWithGoingAway(t *testing.T) {
 	}
 }
 
-// TestRemovedMemberReceivesConversationUpdate checks a user removed from a
-// group gets the update listing the members without them.
+// TestRemovedMemberReceivesConversationUpdate confere que um usuário
+// removido de um grupo recebe a atualização listando os membros sem ele.
 func TestRemovedMemberReceivesConversationUpdate(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, _ := f.createUsers(t)
@@ -181,8 +181,8 @@ func TestRemovedMemberReceivesConversationUpdate(t *testing.T) {
 	}
 }
 
-// failingPersister refuses the first fails messages, as a full persistence
-// queue does, and then behaves like recordingPersister.
+// failingPersister recusa as primeiras fails mensagens, como faz uma fila
+// de persistência cheia, e depois se comporta como recordingPersister.
 type failingPersister struct {
 	recordingPersister
 	fails int
@@ -199,9 +199,9 @@ func (p *failingPersister) Enqueue(ctx context.Context, msg models.Message) (<-c
 	return p.recordingPersister.Enqueue(ctx, msg)
 }
 
-// TestRetryAfterEnqueueFailureIsStored proves a message the persistence
-// queue refused is neither acknowledged on the retry from the dedup cache
-// nor leaves a hole in the sequence.
+// TestRetryAfterEnqueueFailureIsStored prova que uma mensagem recusada
+// pela fila de persistência não recebe ACK do cache de deduplicação na
+// nova tentativa nem deixa buraco na sequence.
 func TestRetryAfterEnqueueFailureIsStored(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, conv := f.createUsers(t)

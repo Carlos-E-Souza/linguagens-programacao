@@ -15,9 +15,9 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// stubHub records the notifications the REST layer pushes into it, and
-// reports a fixed online state, so handlers can be tested without a real
-// hub or a real socket.
+// stubHub registra as notificações que a camada REST envia a ele e
+// informa um estado online fixo, para que os handlers sejam testados sem
+// um hub real nem um socket real.
 type stubHub struct {
 	mu            sync.Mutex
 	notifications []hub.Notification
@@ -55,8 +55,8 @@ func (s *stubHub) SetOnline(userID int64, online bool) {
 	s.online[userID] = online
 }
 
-// The remaining methods satisfy RealtimeHub but are unused here: these
-// tests exercise the REST side only.
+// Os métodos restantes satisfazem RealtimeHub mas não são usados aqui:
+// estes testes exercitam só o lado REST.
 func (s *stubHub) NewClient(userID int64, conn *websocket.Conn) *hub.Client { return nil }
 func (s *stubHub) Register(client *hub.Client)                              {}
 func (s *stubHub) Unregister(client *hub.Client)                            {}
@@ -64,8 +64,8 @@ func (s *stubHub) Submit(ctx context.Context, client *hub.Client, env ws.Envelop
 	return nil
 }
 
-// TestCreateGroupNotifiesHub checks the REST layer tells the hub about a
-// new conversation, which is what makes connected clients refresh.
+// TestCreateGroupNotifiesHub confere que a camada REST avisa o hub sobre
+// uma nova conversa, o que faz os clientes conectados se atualizarem.
 func TestCreateGroupNotifiesHub(t *testing.T) {
 	f := newFixture(t)
 	hubStub := newStubHub()
@@ -94,7 +94,7 @@ func TestCreateGroupNotifiesHub(t *testing.T) {
 	}
 }
 
-// TestRemoveMemberNotifiesHub covers the other membership mutation.
+// TestRemoveMemberNotifiesHub cobre a outra mudança de participação.
 func TestRemoveMemberNotifiesHub(t *testing.T) {
 	f := newFixture(t)
 	hubStub := newStubHub()
@@ -123,7 +123,7 @@ func TestRemoveMemberNotifiesHub(t *testing.T) {
 	}
 }
 
-// TestPresenceReflectedInSearch checks the online flag reaches the client.
+// TestPresenceReflectedInSearch confere que o indicador online chega ao cliente.
 func TestPresenceReflectedInSearch(t *testing.T) {
 	f := newFixture(t)
 	hubStub := newStubHub()
@@ -152,9 +152,9 @@ func TestPresenceReflectedInSearch(t *testing.T) {
 	}
 }
 
-// TestWebSocketRequiresToken covers the handshake authentication: an
-// unauthenticated upgrade must be refused before the connection is
-// established.
+// TestWebSocketRequiresToken cobre a autenticação do handshake: um upgrade
+// sem autenticação precisa ser recusado antes de a conexão ser
+// estabelecida.
 func TestWebSocketRequiresToken(t *testing.T) {
 	f := newFixture(t)
 	f.server.SetHub(newStubHub())
@@ -185,8 +185,8 @@ func TestWebSocketRequiresToken(t *testing.T) {
 	}
 }
 
-// TestWebSocketUnavailableWithoutHub documents the 503 path, which is
-// what a misconfigured deployment would see instead of a panic.
+// TestWebSocketUnavailableWithoutHub documenta o caminho do 503, que é o
+// que uma instalação mal configurada veria em vez de um panic.
 func TestWebSocketUnavailableWithoutHub(t *testing.T) {
 	f := newFixture(t)
 
@@ -201,9 +201,9 @@ func TestWebSocketUnavailableWithoutHub(t *testing.T) {
 	}
 }
 
-// TestRemoveMemberNotifiesTheRemovedUser checks the removed user is named
-// in the notification: they are no longer a member, so the hub would not
-// otherwise send them the update.
+// TestRemoveMemberNotifiesTheRemovedUser confere que o usuário removido é
+// indicado na notificação: ele não é mais membro, então de outro modo o
+// hub não lhe enviaria a atualização.
 func TestRemoveMemberNotifiesTheRemovedUser(t *testing.T) {
 	f := newFixture(t)
 	hubStub := newStubHub()

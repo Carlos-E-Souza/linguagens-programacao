@@ -14,9 +14,9 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// recordingPersister captures messages the hub hands over and answers
-// with a synthetic stored row, so a test can assert on persistence and on
-// the acknowledgement carrying a real ID without a database round trip.
+// recordingPersister captura as mensagens que o hub entrega e responde com
+// uma linha gravada sintética, para que um teste confira a persistência e
+// o ACK com ID real sem ir ao banco.
 type recordingPersister struct {
 	mu       sync.Mutex
 	messages []models.Message
@@ -30,8 +30,8 @@ func (r *recordingPersister) Enqueue(ctx context.Context, msg models.Message) (<
 	r.messages = append(r.messages, msg)
 	r.mu.Unlock()
 
-	// Buffered and pre-filled: the worker would deliver asynchronously,
-	// but a test double can answer immediately.
+	// Com buffer e já preenchido: o worker entregaria de forma assíncrona,
+	// mas um dublê de teste pode responder na hora.
 	stored := make(chan models.Message, 1)
 	stored <- msg
 
@@ -44,8 +44,8 @@ func (r *recordingPersister) count() int {
 	return len(r.messages)
 }
 
-// hubFixture assembles a hub with a real database but no network, so the
-// routing logic can be tested deterministically.
+// hubFixture monta um hub com banco real mas sem rede, para que a lógica
+// de roteamento seja testada de forma determinística.
 type hubFixture struct {
 	t         *testing.T
 	hub       *Hub
@@ -104,26 +104,26 @@ func (f *hubFixture) stop() {
 	}
 }
 
-// fakeClient is a connected client with no socket: it registers with the
-// hub and collects the frames that would have been written.
+// fakeClient é um cliente conectado sem socket: ele se registra no hub e
+// coleta os frames que teriam sido escritos.
 type fakeClient struct {
 	*Client
 	inbox chan []byte
 
-	// pending holds frames that were received but not yet asked for, so
-	// a helper can look for a later frame without losing an earlier one.
+	// pending guarda frames recebidos mas ainda não pedidos, para que um
+	// helper procure um frame posterior sem perder um anterior.
 	pendingMu sync.Mutex
 	pending   [][]byte
 }
 
-// keep stores a frame that was received but not claimed yet.
+// keep guarda um frame recebido mas ainda não reivindicado.
 func (c *fakeClient) keep(frame []byte) {
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
 	c.pending = append(c.pending, frame)
 }
 
-// claim removes and returns the first buffered frame of the given type.
+// claim remove e devolve o primeiro frame guardado do tipo informado.
 func (c *fakeClient) claim(want string) ([]byte, bool) {
 	c.pendingMu.Lock()
 	defer c.pendingMu.Unlock()
@@ -152,15 +152,15 @@ func (c *fakeClient) drain(timeout time.Duration) [][]byte {
 	}
 }
 
-// addClient registers a user made-up client and pumps its outgoing queue.
+// addClient registra um cliente inventado para o usuário e bombeia a fila de saída dele.
 func (f *hubFixture) addClient(userID int64) *fakeClient {
 	f.t.Helper()
 
 	client, clientCtx := newClient(userID, nil, 64)
 	fc := &fakeClient{Client: client, inbox: make(chan []byte, 64)}
 
-	// Stand in for the write goroutine: copy queued frames into the inbox
-	// so the test can inspect them.
+	// Faz o papel da goroutine de escrita: copia os frames enfileirados
+	// para a caixa de entrada, para o teste poder inspecioná-los.
 	go func() {
 		for {
 			frame, ok := client.Next(clientCtx)
@@ -179,8 +179,8 @@ func (f *hubFixture) addClient(userID int64) *fakeClient {
 
 	f.hub.Register(client)
 
-	// Wait until the hub has processed the registration, otherwise the
-	// first message may be routed before the client is known.
+	// Espera o hub processar o registro; senão a primeira mensagem pode
+	// ser roteada antes de o cliente ser conhecido.
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		if f.hub.IsOnline(userID) {
@@ -193,7 +193,7 @@ func (f *hubFixture) addClient(userID int64) *fakeClient {
 	return nil
 }
 
-// submit queues a frame as if it arrived from the client.
+// submit enfileira um frame como se tivesse chegado do cliente.
 func (f *hubFixture) submit(c *fakeClient, env ws.Envelope) {
 	f.t.Helper()
 
@@ -202,7 +202,7 @@ func (f *hubFixture) submit(c *fakeClient, env ws.Envelope) {
 	}
 }
 
-// createUsers registers two users and a direct conversation between them.
+// createUsers cadastra dois usuários e uma conversa individual entre eles.
 func (f *hubFixture) createUsers(t *testing.T) (models.User, models.User, models.Conversation) {
 	t.Helper()
 
@@ -226,9 +226,9 @@ func (f *hubFixture) createUsers(t *testing.T) (models.User, models.User, models
 	return alice, bob, conv
 }
 
-// flushMessages writes the messages collected by the recording persister
-// into the real store, standing in for the persistence worker pool. It is
-// what lets a sync test read back a history.
+// flushMessages grava no store real as mensagens coletadas pelo persister
+// de gravação, fazendo o papel do worker pool de persistência. É o que
+// permite a um teste de sync ler um histórico de volta.
 func (f *hubFixture) flushMessages(conv models.Conversation) error {
 	f.persister.mu.Lock()
 	batch := make([]models.Message, len(f.persister.messages))
@@ -243,11 +243,11 @@ func (f *hubFixture) flushMessages(conv models.Conversation) error {
 	return err
 }
 
-// envelopeType returns the envelope type of a raw frame, or an empty
-// string when the frame cannot be decoded.
+// envelopeType devolve o tipo de envelope de um frame bruto, ou uma
+// string vazia quando o frame não pode ser decodificado.
 //
-// It deliberately does not take *testing.T: claim calls it while holding
-// a mutex, and a t.Fatalf there would leave the lock held.
+// De propósito não recebe *testing.T: claim o chama segurando um mutex, e
+// um t.Fatalf ali deixaria a trava presa.
 func envelopeType(frame []byte) string {
 	var env ws.Envelope
 	if err := json.Unmarshal(frame, &env); err != nil {
@@ -256,7 +256,7 @@ func envelopeType(frame []byte) string {
 	return env.Type
 }
 
-// decodeType is the test-facing wrapper that fails loudly on bad input.
+// decodeType é o invólucro para os testes que falha de forma visível com entrada inválida.
 func decodeType(t *testing.T, frame []byte) string {
 	t.Helper()
 
@@ -267,19 +267,18 @@ func decodeType(t *testing.T, frame []byte) string {
 	return kind
 }
 
-// waitForType returns the first frame of the wanted type, keeping every
-// other frame so a later lookup can still find it.
+// waitForType devolve o primeiro frame do tipo desejado, guardando todos
+// os outros para que uma busca posterior ainda os encontre.
 //
-// Frames are never discarded: a test that waits for message.new and then
-// for sync.end would otherwise lose the terminator when it happened to
-// arrive first.
+// Frames nunca são descartados: um teste que espera message.new e depois
+// sync.end perderia o terminador se ele chegasse primeiro.
 func waitForType(t *testing.T, c *fakeClient, want string, timeout time.Duration) []byte {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
-		// Check what is already buffered before waiting for more.
+		// Confere o que já está guardado antes de esperar por mais.
 		if frame, ok := c.claim(want); ok {
 			return frame
 		}
@@ -317,9 +316,9 @@ func TestSendMessageIsAcknowledgedAndDelivered(t *testing.T) {
 	if got, want := ack.Sequence, int64(1); got != want {
 		t.Errorf("ack sequence: got %d, want %d", got, want)
 	}
-	// The acknowledgement must carry the database-assigned ID, not zero:
-	// the client writes this value into its cache and uses it to match
-	// message.new frames, so a zero would corrupt that mapping.
+	// O ACK precisa trazer o ID atribuído pelo banco, não zero: o cliente
+	// grava esse valor no cache e o usa para casar os frames message.new,
+	// então um zero corromperia esse mapeamento.
 	if ack.ID == 0 {
 		t.Error("ack id must be the stored message id, got 0")
 	}
@@ -327,7 +326,7 @@ func TestSendMessageIsAcknowledgedAndDelivered(t *testing.T) {
 		t.Error("ack created_at must be set")
 	}
 
-	// Bob must receive the message.
+	// Bob precisa receber a mensagem.
 	newFrame := waitForType(t, bobClient, ws.TypeMessageNew, 2*time.Second)
 	var msg models.Message
 	if err := json.Unmarshal(mustData(t, newFrame), &msg); err != nil {
@@ -340,14 +339,14 @@ func TestSendMessageIsAcknowledgedAndDelivered(t *testing.T) {
 		t.Errorf("sender: got %d, want %d", got, want)
 	}
 
-	// And it must have been handed to the persistence pool.
+	// E ela precisa ter sido entregue ao pool de persistência.
 	if got, want := f.persister.count(), 1; got != want {
 		t.Errorf("persisted messages: got %d, want %d", got, want)
 	}
 }
 
-// TestSendMessageDeduplicatesByClientID is the guarantee the resend flow
-// depends on: the same client_id must not create a second message.
+// TestSendMessageDeduplicatesByClientID é a garantia de que depende o
+// fluxo de reenvio: o mesmo client_id não pode criar uma segunda mensagem.
 func TestSendMessageDeduplicatesByClientID(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, conv := f.createUsers(t)
@@ -377,12 +376,12 @@ func TestSendMessageDeduplicatesByClientID(t *testing.T) {
 	}
 }
 
-// TestSendToForeignConversationIsRejected covers the authorisation path.
+// TestSendToForeignConversationIsRejected cobre o caminho de autorização.
 func TestSendToForeignConversationIsRejected(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, _ := f.createUsers(t)
 
-	// A conversation between alice and bob that carol is not part of.
+	// Uma conversa entre alice e bob da qual carol não participa.
 	carol, err := f.store.CreateUser(context.Background(), "carol", "Carol", "hash")
 	if err != nil {
 		t.Fatalf("CreateUser(carol) failed: %v", err)
@@ -416,7 +415,7 @@ func TestSendToForeignConversationIsRejected(t *testing.T) {
 	}
 }
 
-// TestSendValidationErrors covers the cheap rejections.
+// TestSendValidationErrors cobre as rejeições baratas.
 func TestSendValidationErrors(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, conv := f.createUsers(t)
@@ -461,7 +460,7 @@ func TestSendValidationErrors(t *testing.T) {
 	}
 }
 
-// TestSendRejectsBodyOverLimit guards the message size cap.
+// TestSendRejectsBodyOverLimit protege o limite de tamanho da mensagem.
 func TestSendRejectsBodyOverLimit(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, conv := f.createUsers(t)
@@ -488,8 +487,8 @@ func TestSendRejectsBodyOverLimit(t *testing.T) {
 	}
 }
 
-// TestUnknownTypeIsRejected keeps a typo in the client from failing
-// silently.
+// TestUnknownTypeIsRejected impede que um erro de digitação no cliente
+// falhe em silêncio.
 func TestUnknownTypeIsRejected(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, _ := f.createUsers(t)
@@ -508,8 +507,8 @@ func TestUnknownTypeIsRejected(t *testing.T) {
 	}
 }
 
-// TestSequenceIncreasesAcrossMessages checks ordering within a
-// conversation.
+// TestSequenceIncreasesAcrossMessages confere a ordenação dentro de uma
+// conversa.
 func TestSequenceIncreasesAcrossMessages(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, conv := f.createUsers(t)
@@ -535,14 +534,14 @@ func TestSequenceIncreasesAcrossMessages(t *testing.T) {
 	}
 }
 
-// TestPresenceBroadcastOnConnect checks that a contact learns when a user
-// comes online.
+// TestPresenceBroadcastOnConnect confere que um contato fica sabendo
+// quando um usuário entra.
 func TestPresenceBroadcastOnConnect(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, _ := f.createUsers(t)
 
 	bobClient := f.addClient(bob.ID)
-	// Let bob's own registration settle before alice connects.
+	// Deixa o registro de bob assentar antes de alice conectar.
 	time.Sleep(50 * time.Millisecond)
 
 	aliceClient := f.addClient(alice.ID)
@@ -563,8 +562,8 @@ func TestPresenceBroadcastOnConnect(t *testing.T) {
 	_ = aliceClient
 }
 
-// TestIsOnlineTracksConnections covers the presence query used by the
-// REST API.
+// TestIsOnlineTracksConnections cobre a consulta de presença usada pela
+// API REST.
 func TestIsOnlineTracksConnections(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, _ := f.createUsers(t)
@@ -593,7 +592,7 @@ func TestIsOnlineTracksConnections(t *testing.T) {
 	t.Error("user should be offline after disconnecting")
 }
 
-// mustData extracts the data field of an envelope.
+// mustData extrai o campo data de um envelope.
 func mustData(t *testing.T, frame []byte) []byte {
 	t.Helper()
 
@@ -604,7 +603,7 @@ func mustData(t *testing.T, frame []byte) []byte {
 	return env.Data
 }
 
-// clientIDFor builds a stable client ID for the nth message.
+// clientIDFor monta um client ID estável para a n-ésima mensagem.
 func clientIDFor(n int) string {
 	return "client-" + string(rune('0'+n))
 }

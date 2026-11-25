@@ -18,7 +18,7 @@ export function displayNameError(value) {
   const name = value.trim();
   if (!name) return 'Informe como você quer aparecer.';
   if (new TextEncoder().encode(name).length > MAX_DISPLAY_NAME_BYTES) {
-    return 'O nome de exibição é muito longo. Use no máximo 64 bytes.';
+    return 'O nome de exibição é muito longo. Use no máximo 64 caracteres.';
   }
   return '';
 }
@@ -26,7 +26,7 @@ export function displayNameError(value) {
 export function passwordError(value) {
   if (!value) return 'Informe a senha.';
   const size = new TextEncoder().encode(value).length;
-  if (size < MIN_PASSWORD_BYTES) return 'A senha precisa de pelo menos 8 bytes.';
-  if (size > MAX_PASSWORD_BYTES) return 'A senha deve ter no máximo 72 bytes.';
+  if (size < MIN_PASSWORD_BYTES) return 'A senha precisa de pelo menos 8 caracteres.';
+  if (size > MAX_PASSWORD_BYTES) return 'A senha deve ter no máximo 72 caracteres.';
   return '';
 }

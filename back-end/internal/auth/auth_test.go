@@ -10,8 +10,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// testHasher uses the cheapest bcrypt cost: hashing at the production
-// cost would make the suite needlessly slow.
+// testHasher usa o custo de bcrypt mais barato: gerar hashes com o custo
+// de produção deixaria a suíte lenta sem necessidade.
 func testHasher() *Hasher {
 	return NewHasher(bcrypt.MinCost)
 }
@@ -45,8 +45,8 @@ func TestHashPasswordAndCheck(t *testing.T) {
 	}
 }
 
-// TestHashPasswordIsSalted proves two identical passwords hash
-// differently, which is what stops a rainbow table from being useful.
+// TestHashPasswordIsSalted prova que duas senhas idênticas geram hashes
+// diferentes, o que torna inútil uma rainbow table.
 func TestHashPasswordIsSalted(t *testing.T) {
 	h := testHasher()
 
@@ -72,9 +72,9 @@ func TestHashPasswordRejectsShortPassword(t *testing.T) {
 	}
 }
 
-// TestHashPasswordRejectsOverlongPassword guards bcrypt's 72-byte limit:
-// beyond it the tail is silently ignored, so the stored password would
-// not be the one the user typed.
+// TestHashPasswordRejectsOverlongPassword protege o limite de 72 bytes do
+// bcrypt: além dele o final é ignorado sem aviso, e a senha guardada não
+// seria a que o usuário digitou.
 func TestHashPasswordRejectsOverlongPassword(t *testing.T) {
 	h := testHasher()
 
@@ -101,8 +101,8 @@ func TestTokenRoundTrip(t *testing.T) {
 }
 
 func TestValidateTokenRejectsExpired(t *testing.T) {
-	// A negative expiry is impossible to configure, so the token is
-	// minted directly with a timestamp in the past.
+	// Uma expiração negativa não pode ser configurada, então o token é
+	// gerado diretamente com um horário no passado.
 	issuer, err := NewTokenIssuer("test-secret-that-is-long-enough", time.Hour)
 	if err != nil {
 		t.Fatalf("NewTokenIssuer() failed: %v", err)
@@ -141,9 +141,9 @@ func TestValidateTokenRejectsWrongSecret(t *testing.T) {
 	}
 }
 
-// TestValidateTokenRejectsAlgNone is the classic JWT attack: a token
-// claiming "alg": "none" carries no signature at all. Pinning the method
-// is what makes it fail.
+// TestValidateTokenRejectsAlgNone é o clássico ataque ao JWT: um token
+// que declara "alg": "none" não tem assinatura nenhuma. Fixar o método é
+// o que o faz falhar.
 func TestValidateTokenRejectsAlgNone(t *testing.T) {
 	issuer := testIssuer(t)
 
@@ -163,7 +163,7 @@ func TestValidateTokenRejectsAlgNone(t *testing.T) {
 	}
 }
 
-// TestValidateTokenRejectsGarbage covers malformed input from a client.
+// TestValidateTokenRejectsGarbage cobre entrada malformada vinda de um cliente.
 func TestValidateTokenRejectsGarbage(t *testing.T) {
 	issuer := testIssuer(t)
 
@@ -174,8 +174,8 @@ func TestValidateTokenRejectsGarbage(t *testing.T) {
 	}
 }
 
-// TestNewTokenIssuerRejectsEmptySecret guards the fail-fast rule from the
-// plan: a server with no secret must not start.
+// TestNewTokenIssuerRejectsEmptySecret protege a regra de falhar cedo do
+// plano: um servidor sem segredo não pode subir.
 func TestNewTokenIssuerRejectsEmptySecret(t *testing.T) {
 	if _, err := NewTokenIssuer("", time.Hour); err == nil {
 		t.Error("expected an error for an empty secret")
