@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wiki · Chat em Tempo Real com Go | Linguagens de Programação</title>
+  <meta name="description" content="Wiki do trabalho final de Linguagens de Programação (UnB): chat em tempo real com servidor Go, WebSockets e cliente desktop Wails.">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ---------- Tokens (tema claro por padrão, escuro via sistema ou botão) ---------- */
+    :root {
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --surface-2: #f0f2f5;
+      --line: #e2e5ea;
+      --text: #1a1d23;
+      --muted: #5f6672;
+      --accent: #0e8fa3;
+      --accent-soft: rgba(14, 143, 163, .10);
+      --code-bg: #f0f2f5;
+      --shadow: 0 1px 2px rgba(16, 24, 40, .06);
+
+      --font-head: "Outfit", system-ui, sans-serif;
+      --font-body: "Source Sans 3", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+      --nav-h: 3.75rem;
+      --side-w: 15rem;
+      --radius: 10px;
+      color-scheme: light;
+    }
+    :root[data-theme="dark"] {
+      --bg: #0b0d12;
+      --surface: #12151c;
+      --surface-2: #171b24;
+      --line: #252a35;
+      --text: #e5e7ec;
+      --muted: #9198a5;
+      --accent: #38c9e0;
+      --accent-soft: rgba(56, 201, 224, .12);
+      --code-bg: #171b24;
+      --shadow: none;
+      color-scheme: dark;
+    }
+
+    /* ---------- Base ---------- */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: calc(var(--nav-h) + 1.25rem); }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: var(--font-body); font-size: 1.0625rem; line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    h1, h2, h3 { font-family: var(--font-head); line-height: 1.2; margin: 0; letter-spacing: -.01em; }
+    p { margin: 0 0 1rem; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-family: var(--font-mono); font-size: .85em;
+      background: var(--code-bg); border: 1px solid var(--line);
+      padding: .08em .35em; border-radius: 5px;
+    }
+    pre {
+      margin: 0 0 1rem; padding: 1rem 1.1rem; overflow-x: auto;
+      background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--radius);
+      font-family: var(--font-mono); font-size: .82rem; line-height: 1.7;
+    }
+    pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+    .c { color: var(--muted); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+    /* ---------- Navbar ---------- */
+    .nav {
+      position: fixed; inset: 0 0 auto 0; height: var(--nav-h); z-index: 50;
+      display: flex; align-items: center; gap: 1rem; padding: 0 1.25rem;
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line);
+    }
+    .brand {
+      display: flex; align-items: center; gap: .55rem;
+      font-family: var(--font-mono); font-size: .92rem; color: var(--text); white-space: nowrap;
+    }
+    .brand:hover { text-decoration: none; }
+    .brand i { width: .55rem; height: .55rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    .nav-links { display: none; gap: 1.3rem; margin-left: 1.5rem; font-size: .95rem; }
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover, .nav-links a.active { color: var(--text); text-decoration: none; }
+    .nav-tools { margin-left: auto; display: flex; align-items: center; gap: .35rem; }
+    .icon-btn {
+      display: grid; place-items: center; width: 2.25rem; height: 2.25rem;
+      border: 1px solid transparent; border-radius: 8px; background: none;
+      color: var(--muted); cursor: pointer;
+    }
+    .icon-btn:hover { color: var(--text); border-color: var(--line); text-decoration: none; }
+    .icon-btn svg { width: 1.15rem; height: 1.15rem; }
+    .menu-btn { margin-left: -.4rem; }
+
+    /* ---------- Layout ---------- */
+    .layout { padding-top: var(--nav-h); }
+    .sidebar {
+      position: fixed; top: var(--nav-h); bottom: 0; left: 0; width: min(80vw, var(--side-w));
+      padding: 1.5rem 1rem 2rem; overflow-y: auto; z-index: 40;
+      background: var(--bg); border-right: 1px solid var(--line);
+      transform: translateX(-100%); transition: transform .25s ease;
+    }
+    .sidebar.open { transform: none; box-shadow: 8px 0 30px rgba(0, 0, 0, .15); }
+    .side-group { margin-bottom: 1.4rem; }
+    .side-title {
+      font-family: var(--font-mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); margin: 0 0 .45rem .65rem;
+    }
+    .sidebar a {
+      display: block; padding: .32rem .65rem; border-radius: 6px;
+      color: var(--muted); font-size: .94rem; border-left: 2px solid transparent;
+    }
+    .sidebar a:hover { color: var(--text); background: var(--surface-2); text-decoration: none; }
+    .sidebar a.active { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+    .scrim { position: fixed; inset: var(--nav-h) 0 0 0; background: rgba(0, 0, 0, .3); z-index: 30; display: none; }
+    .scrim.show { display: block; }
+
+    .content { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+
+    /* ---------- Seções ---------- */
+    .doc { padding: 2.5rem 0; border-top: 1px solid var(--line); }
+    .doc:first-child { border-top: 0; padding-top: 0; }
+    .doc h2 { font-size: 1.7rem; font-weight: 600; margin-bottom: 1rem; }
+    .doc h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8rem 0 .7rem; }
+    .lead { color: var(--muted); font-size: 1.1rem; }
+    .anchor { color: var(--line); margin-left: .4rem; font-weight: 400; opacity: 0; }
+    .doc h2:hover .anchor { opacity: 1; color: var(--muted); text-decoration: none; }
+
+    /* Apresentação */
+    .hero { padding: 1rem 0 2.5rem; }
+    .tag {
+      display: inline-block; font-size: .82rem; color: var(--muted);
+      border: 1px solid var(--line); border-radius: 999px; padding: .2rem .8rem; margin-bottom: 1.2rem;
+    }
+    .hero h1 { font-size: clamp(2.1rem, 6vw, 3.1rem); font-weight: 700; margin-bottom: 1rem; }
+    .hero h1 span { color: var(--accent); }
+    .actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.6rem; }
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      font-family: var(--font-head); font-weight: 500; font-size: .97rem;
+      padding: .65rem 1.15rem; border-radius: 8px; border: 1px solid var(--line);
+      color: var(--text); background: var(--surface); box-shadow: var(--shadow);
+    }
+    .btn:hover { border-color: var(--accent); text-decoration: none; }
+    .btn svg { width: 1.05rem; height: 1.05rem; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    :root[data-theme="dark"] .btn-primary { color: #04161a; }
+    .btn-primary:hover { filter: brightness(1.08); }
+
+    .facts { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; margin-top: 2rem; }
+    .facts div { background: var(--surface); padding: .9rem 1.1rem; }
+    .facts dt { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+    .facts dd { margin: .2rem 0 0; font-size: .97rem; }
+
+    /* Cards */
+    .grid { display: grid; gap: 1rem; margin-bottom: 1rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 1.2rem 1.3rem; box-shadow: var(--shadow);
+    }
+    .card h3 { margin: 0 0 .5rem; font-size: 1.05rem; }
+    .card p { color: var(--muted); font-size: .96rem; margin: 0; }
+    .card .kind { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .07em; text-transform: uppercase; color: var(--accent); margin-bottom: .35rem; }
+    .feat h3 { font-family: var(--font-mono); font-weight: 500; font-size: .92rem; color: var(--accent); }
+
+    /* Diagrama de arquitetura */
+    .arch { display: grid; gap: .5rem; margin: 1.5rem 0; }
+    .arch-box { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: .9rem 1rem; }
+    .arch-box b { font-family: var(--font-head); font-weight: 600; }
+    .arch-box small { display: block; color: var(--muted); font-size: .88rem; }
+    .arch-box.hl { border-color: var(--accent); background: var(--accent-soft); }
+    .arch-arrow { text-align: center; font-family: var(--font-mono); font-size: .78rem; color: var(--muted); }
+
+    /* Tabelas */
+    .table-wrap { overflow-x: auto; margin-bottom: 1rem; border: 1px solid var(--line); border-radius: var(--radius); }
+    table { width: 100%; border-collapse: collapse; font-size: .93rem; background: var(--surface); }
+    th, td { text-align: left; padding: .6rem .85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-family: var(--font-head); font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    td code { white-space: nowrap; }
+    .m { font-family: var(--font-mono); font-size: .75rem; font-weight: 500; padding: .1rem .4rem; border-radius: 4px; }
+    .m-get { color: #1a7f4b; background: rgba(26, 127, 75, .12); }
+    .m-post { color: #9a6700; background: rgba(154, 103, 0, .12); }
+    .m-del { color: #c0392b; background: rgba(192, 57, 43, .12); }
+    :root[data-theme="dark"] .m-get { color: #5fd39a; }
+    :root[data-theme="dark"] .m-post { color: #e3b341; }
+    :root[data-theme="dark"] .m-del { color: #f47067; }
+
+    /* Passos numerados */
+    .steps { list-style: none; padding: 0; margin: 0 0 1rem; counter-reset: s; }
+    .steps li { counter-increment: s; position: relative; padding: 0 0 1.1rem 2.6rem; }
+    .steps li::before {
+      content: counter(s); position: absolute; left: 0; top: .05rem;
+      width: 1.7rem; height: 1.7rem; border-radius: 50%; display: grid; place-items: center;
+      font-family: var(--font-mono); font-size: .78rem; color: var(--accent);
+      border: 1px solid var(--accent); background: var(--accent-soft);
+    }
+    .steps li:not(:last-child)::after {
+      content: ""; position: absolute; left: .83rem; top: 1.9rem; bottom: .1rem; width: 1px; background: var(--line);
+    }
+    .steps b { font-family: var(--font-head); font-weight: 600; }
+
+    .note {
+      border-left: 3px solid var(--accent); background: var(--accent-soft);
+      padding: .8rem 1rem; border-radius: 0 var(--radius) var(--radius) 0; font-size: .96rem; margin-bottom: 1rem;
+    }
+    .note p:last-child { margin: 0; }
+
+    /* Vídeo */
+    .video-frame {
+      position: relative; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: var(--radius);
+      background: var(--surface-2); overflow: hidden;
+    }
+    .video-frame iframe, .video-frame video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+    .video-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .8rem; text-align: center; padding: 1.5rem; color: var(--muted); font-size: .95rem; }
+    .play { width: 3.6rem; height: 3.6rem; border-radius: 50%; border: 1px solid var(--accent); display: grid; place-items: center; color: var(--accent); background: var(--accent-soft); }
+    .play svg { width: 1.3rem; height: 1.3rem; margin-left: .15rem; }
+
+    /* Rodapé */
+    footer { border-top: 1px solid var(--line); padding: 1.8rem 1.25rem; color: var(--muted); font-size: .9rem; }
+    .foot { max-width: 52rem; margin: 0 auto; display: flex; flex-wrap: wrap; gap: .6rem 1.5rem; justify-content: space-between; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
+    }
+
+    /* ---------- Telas maiores ---------- */
+    @media (min-width: 640px) {
+      .grid-2 { grid-template-columns: repeat(2, 1fr); }
+      .grid-3 { grid-template-columns: repeat(2, 1fr); }
+      .facts { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (min-width: 900px) {
+      .nav-links { display: flex; }
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+      .arch { grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; }
+    }
+    @media (min-width: 1100px) {
+      .menu-btn { display: none; }
+      .sidebar { transform: none; box-shadow: none; }
+      .scrim { display: none !important; }
+      .layout { padding-left: var(--side-w); }
+      .content { padding: 3rem 2.5rem 5rem; }
+      footer { margin-left: var(--side-w); }
+    }
+  </style>
+  <script>
+    /* Aplica o tema antes da pintura para evitar piscar */
+    (function () {
+      var saved = localStorage.getItem("theme");
+      var dark = saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      if (dark) document.documentElement.dataset.theme = "dark";
+    })();
+  </script>
+</head>
+
+<body>
+  <!-- ================= NAVBAR ================= -->
+  <nav class="nav" aria-label="Navegação principal">
+    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Abrir índice" aria-expanded="false" aria-controls="sidebar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <a href="#apresentacao" class="brand"><i></i>linguagens-programacao</a>
+    <div class="nav-links">
+      <a href="#apresentacao" data-nav="apresentacao">Início</a>
+      <a href="#arquitetura" data-nav="arquitetura">Arquitetura</a>
+      <a href="#api-rest" data-nav="api-rest">Referência</a>
+      <a href="#como-rodar" data-nav="como-rodar">Guia</a>
+      <a href="#video" data-nav="video">Vídeo</a>
+    </div>
+    <div class="nav-tools">
+      <button class="icon-btn" id="themeBtn" aria-label="Alternar tema claro/escuro">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <a class="icon-btn" href="https://github.com/Carlos-E-Souza/linguagens-programacao" target="_blank" rel="noopener" aria-label="Repositório no GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+      </a>
+    </div>
+  </nav>
+
+  <!-- ================= ÍNDICE LATERAL ================= -->
+  <aside class="sidebar" id="sidebar" aria-label="Índice da wiki">
+    <div class="side-group">
+      <p class="side-title">Visão geral</p>
+      <a href="#apresentacao">Apresentação</a>
+      <a href="#aplicacoes">Aplicações</a>
+      <a href="#arquitetura">Arquitetura</a>
+      <a href="#funcionamento">Funcionamento</a>
+    </div>
+    <div class="side-group">
+      <p class="side-title">Conceitos</p>
+      <a href="#recursos-go">Recursos de Go</a>
+      <a href="#confiabilidade">Confiabilidade</a>
+    </div>
+    <div class="side-group">
+      <p class="side-title">Referência</p>
+      <a href="#api-rest">API REST</a>
+      <a href="#protocolo-ws">Protocolo WebSocket</a>
+      <a href="#estrutura">Estrutura de pastas</a>
+      <a href="#decisoes">Decisões de projeto</a>
+    </div>
+    <div class="side-group">
+      <p class="side-title">Guia</p>
+      <a href="#como-rodar">Como rodar</a>
+      <a href="#convencoes">Convenções</a>
+      <a href="#video">Vídeo</a>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <div class="layout">
+    <main class="content">
+
+      <!-- ================= APRESENTAÇÃO ================= -->
+      <section class="doc hero" id="apresentacao">
+        <span class="tag">Trabalho final · Linguagens de Programação · UnB</span>
+        <h1>Chat em tempo real com <span>Go</span> e WebSockets</h1>
+        <p class="lead">
+          Sistema de mensagens instantâneas com conversas individuais (1:1) e em grupo. Um servidor concorrente
+          em Go e um cliente desktop em Wails, feitos para explorar na prática o que a linguagem tem de mais
+          característico: goroutines, channels e o runtime de concorrência.
+        </p>
+        <p class="lead">
+          O desafio: entregar muitas mensagens com baixa latência e pouco consumo de memória e CPU, sem perder nem
+          embaralhar mensagens quando a conexão cai.
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#arquitetura">Começar a leitura</a>
+          <a class="btn" href="#como-rodar">Como rodar</a>
+          <a class="btn" href="https://github.com/Carlos-E-Souza/linguagens-programacao" target="_blank" rel="noopener">Repositório ↗</a>
+        </div>
+        <dl class="facts">
+          <div><dt>Domínio</dt><dd>Comunicação em tempo real e alta concorrência</dd></div>
+          <div><dt>Usuários</dt><dd>Equipes, comunidades e plataformas que trocam mensagens</dd></div>
+          <div><dt>Stack</dt><dd>Go 1.26, SQLite, Wails v2, Vite, JS puro</dd></div>
+        </dl>
+      </section>
+
+      <!-- ================= APLICAÇÕES ================= -->
+      <section class="doc" id="aplicacoes">
+        <h2>Aplicações<a class="anchor" href="#aplicacoes" aria-hidden="true">#</a></h2>
+        <p>O repositório contém duas aplicações independentes, cada uma com seu próprio módulo Go.</p>
+        <div class="grid grid-2">
+          <article class="card">
+            <div class="kind">back-end · Go</div>
+            <h3>Servidor de mensagens</h3>
+            <p>
+              Autenticação, usuários, conversas, roteamento em tempo real e histórico. Expõe uma API REST com
+              <code>net/http</code> e um endpoint WebSocket (<code>coder/websocket</code>) autenticado por JWT.
+              Persiste em SQLite via <code>modernc.org/sqlite</code>, em Go puro.
+            </p>
+            <p style="margin-top:.8rem"><a href="https://github.com/Carlos-E-Souza/linguagens-programacao/tree/main/back-end" target="_blank" rel="noopener">Ver <code>back-end/</code> ↗</a></p>
+          </article>
+          <article class="card">
+            <div class="kind">front-end · Wails + JS</div>
+            <h3>Cliente desktop</h3>
+            <p>
+              A camada Go mantém o WebSocket, reconecta sozinha, guarda a fila de pendentes e um cache local em
+              SQLite. A interface em HTML, CSS e JS puros mostra conversas, grupos, presença e o status de cada
+              mensagem (enviada, entregue, lida).
+            </p>
+            <p style="margin-top:.8rem"><a href="https://github.com/Carlos-E-Souza/linguagens-programacao/tree/main/front-end" target="_blank" rel="noopener">Ver <code>front-end/</code> ↗</a></p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ================= ARQUITETURA ================= -->
+      <section class="doc" id="arquitetura">
+        <h2>Arquitetura<a class="anchor" href="#arquitetura" aria-hidden="true">#</a></h2>
+        <p>
+          A interface <strong>nunca</strong> fala direto com o servidor: toda comunicação passa pela camada Go do
+          cliente, que conversa com o servidor por REST e WebSocket.
+        </p>
+        <div class="arch" role="img" aria-label="Interface JS conversa com a camada Go do Wails, que conversa com o servidor Go por REST e WebSocket; o servidor grava no SQLite">
+          <div class="arch-box">
+            <b>Interface</b>
+            <small>HTML/CSS/JS · <code>actions.js</code> → <code>state.js</code></small>
+          </div>
+          <div class="arch-arrow">métodos de App<br>⇄ eventos</div>
+          <div class="arch-box">
+            <b>Camada Go (Wails)</b>
+            <small>wsclient · queue · cache SQLite</small>
+          </div>
+          <div class="arch-arrow">REST + WS<br>⇄</div>
+          <div class="arch-box hl">
+            <b>Servidor Go</b>
+            <small>Hub · worker pool · SQLite</small>
+          </div>
+        </div>
+        <h3>Dentro do servidor</h3>
+        <div class="grid grid-3">
+          <div class="card"><h3>Hub</h3><p>Goroutine única dona do estado de roteamento. Valida, deduplica, atribui a <code>sequence</code> e entrega.</p></div>
+          <div class="card"><h3>Clientes</h3><p>Cada conexão tem uma goroutine de leitura e uma de escrita, com canal de envio com buffer.</p></div>
+          <div class="card"><h3>Store pool</h3><p>Workers gravam mensagens em lote no SQLite, com retry e backpressure, fora do caminho da entrega.</p></div>
+        </div>
+      </section>
+
+      <!-- ================= FUNCIONAMENTO ================= -->
+      <section class="doc" id="funcionamento">
+        <h2>Funcionamento<a class="anchor" href="#funcionamento" aria-hidden="true">#</a></h2>
+        <p>O caminho de uma mensagem, do login até a confirmação de leitura.</p>
+        <ol class="steps">
+          <li><b>Login.</b> <code>App.Login</code> chama <code>POST /api/auth/login</code>; o servidor confere o bcrypt e devolve um JWT, salvo no cache local.</li>
+          <li><b>Conexão.</b> O cliente abre <code>/ws</code> com <code>Authorization: Bearer</code>; o Hub registra a conexão com suas goroutines.</li>
+          <li><b>Presença.</b> Na primeira conexão do usuário, os contatos recebem <code>presence {online: true}</code>.</li>
+          <li><b>Envio.</b> <code>App.SendMessage</code> gera um <code>client_id</code> (UUID), salva como <code>pending</code> e envia <code>message.send</code>.</li>
+          <li><b>Roteamento.</b> O Hub valida membro e tamanho, deduplica por <code>(sender_id, client_id)</code>, atribui a <code>sequence</code> e entrega <code>message.new</code> aos membros online.</li>
+          <li><b>Confirmação.</b> A mensagem vai para a fila de persistência e o remetente recebe <code>message.ack</code>.</li>
+          <li><b>Status.</b> Destinatários enviam <code>message.delivered</code> e <code>message.read</code>; o Hub propaga <code>message.status</code>.</li>
+          <li><b>Reconexão.</b> Após uma queda, o cliente envia <code>sync</code> com a última <code>sequence</code> de cada conversa e recebe o que faltou, até <code>sync.end</code>.</li>
+          <li><b>Saída.</b> Fechamento do socket ou falha no heartbeat remove o usuário do Hub e avisa os contatos com <code>presence {online: false}</code>.</li>
+        </ol>
+      </section>
+
+      <!-- ================= RECURSOS DE GO ================= -->
+      <section class="doc" id="recursos-go">
+        <h2>Recursos de Go<a class="anchor" href="#recursos-go" aria-hidden="true">#</a></h2>
+        <p>O objetivo da disciplina: usar os recursos característicos da linguagem num caso real.</p>
+        <div class="grid grid-3">
+          <div class="card feat"><h3>Goroutines</h3><p>Duas por cliente conectado. Poucos kilobytes de pilha, escalonadas pelo runtime.</p></div>
+          <div class="card feat"><h3>Channels</h3><p>Comunicação entre goroutines. Buffers absorvem picos e isolam clientes lentos.</p></div>
+          <div class="card feat"><h3>select</h3><p>O laço do Hub trata registro, saída e mensagens sem bloquear.</p></div>
+          <div class="card feat"><h3>sync.RWMutex</h3><p>Protege o que a API lê do Hub (ex.: <code>IsOnline</code>) com leituras simultâneas.</p></div>
+          <div class="card feat"><h3>Worker pool</h3><p>Goroutines fixas consomem a fila de gravação no banco.</p></div>
+          <div class="card feat"><h3>context.Context</h3><p>Cancelamento e timeouts entre requisições, conexões e workers.</p></div>
+          <div class="card feat"><h3>time.Ticker</h3><p>Heartbeat com pings periódicos detecta conexões mortas.</p></div>
+          <div class="card feat"><h3>Graceful shutdown</h3><p><code>WaitGroup</code> e sinais do SO: pendentes são gravadas antes de encerrar.</p></div>
+          <div class="card feat"><h3>net/http</h3><p>Servidor HTTP concorrente da biblioteca padrão, sem frameworks.</p></div>
+        </div>
+        <pre><code><span class="c">// laço central do Hub (ilustrativo)</span>
+for {
+    select {
+    case c := &lt;-h.register:   h.add(c)
+    case c := &lt;-h.unregister: h.remove(c)
+    case m := &lt;-h.incoming:   h.route(m)
+    case &lt;-ctx.Done():        return
+    }
+}</code></pre>
+      </section>
+
+      <!-- ================= CONFIABILIDADE ================= -->
+      <section class="doc" id="confiabilidade">
+        <h2>Confiabilidade<a class="anchor" href="#confiabilidade" aria-hidden="true">#</a></h2>
+        <p>
+          O TCP já trata perda, retransmissão e ordem no transporte. O projeto complementa isso na camada de
+          aplicação:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Mecanismo</th><th>Garante</th></tr></thead>
+            <tbody>
+              <tr><td><code>client_id</code> (UUID do cliente)</td><td>Reenvio sem duplicatas no servidor</td></tr>
+              <tr><td><code>message.ack</code></td><td>Mensagem sem ACK fica na fila e é reenviada após reconectar</td></tr>
+              <tr><td><code>sequence</code> por conversa</td><td>Ordem de exibição; atribuída pelo Hub, sem condição de corrida</td></tr>
+              <tr><td><code>sync</code> / <code>sync.end</code></td><td>Recuperação do que chegou enquanto o cliente estava offline</td></tr>
+              <tr><td>Heartbeat (<code>PING_INTERVAL</code>, <code>PONG_TIMEOUT</code>)</td><td>Conexões mortas são detectadas e liberadas</td></tr>
+              <tr><td>Backoff com jitter (1s → 30s)</td><td>Reconexão automática sem sobrecarregar o servidor</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Status de uma mensagem no cliente:</p>
+        <pre><code>pending → sent (ACK) → delivered → read
+        ↘ failed (erro definitivo do servidor)</code></pre>
+      </section>
+
+      <!-- ================= API REST ================= -->
+      <section class="doc" id="api-rest">
+        <h2>API REST<a class="anchor" href="#api-rest" aria-hidden="true">#</a></h2>
+        <p>Rotas protegidas exigem o header <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Método</th><th>Endpoint</th><th>Função</th></tr></thead>
+            <tbody>
+              <tr><td><span class="m m-get">GET</span></td><td><code>/api/health</code></td><td>Disponibilidade do servidor</td></tr>
+              <tr><td><span class="m m-post">POST</span></td><td><code>/api/auth/register</code></td><td>Cadastro de usuário</td></tr>
+              <tr><td><span class="m m-post">POST</span></td><td><code>/api/auth/login</code></td><td>Login, retorna token JWT</td></tr>
+              <tr><td><span class="m m-get">GET</span></td><td><code>/api/users</code></td><td>Busca de usuários</td></tr>
+              <tr><td><span class="m m-get">GET</span></td><td><code>/api/conversations</code></td><td>Conversas do usuário com não lidas</td></tr>
+              <tr><td><span class="m m-post">POST</span></td><td><code>/api/conversations</code></td><td>Cria conversa individual ou grupo</td></tr>
+              <tr><td><span class="m m-post">POST</span></td><td><code>/api/conversations/{id}/members</code></td><td>Adiciona membros a um grupo</td></tr>
+              <tr><td><span class="m m-del">DELETE</span></td><td><code>/api/conversations/{id}/members/{userId}</code></td><td>Remove membro ou sai do grupo</td></tr>
+              <tr><td><span class="m m-get">GET</span></td><td><code>/api/conversations/{id}/messages</code></td><td>Histórico paginado</td></tr>
+              <tr><td><span class="m m-get">GET</span></td><td><code>/ws</code></td><td>Abre a conexão WebSocket autenticada</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= PROTOCOLO WS ================= -->
+      <section class="doc" id="protocolo-ws">
+        <h2>Protocolo WebSocket<a class="anchor" href="#protocolo-ws" aria-hidden="true">#</a></h2>
+        <p>Todo frame usa o mesmo envelope; o tipo define o formato de <code>data</code>.</p>
+        <pre><code>{ "type": "message.send", "data": { "client_id": "…", "conversation_id": 1, "body": "Olá!" } }</code></pre>
+        <h3>Cliente → servidor</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tipo</th><th>Campos</th><th>Uso</th></tr></thead>
+            <tbody>
+              <tr><td><code>message.send</code></td><td><code>client_id</code>, <code>conversation_id</code>, <code>body</code></td><td>Envia uma mensagem</td></tr>
+              <tr><td><code>message.delivered</code></td><td><code>conversation_id</code>, <code>up_to_sequence</code></td><td>Confirma recebimento</td></tr>
+              <tr><td><code>message.read</code></td><td><code>conversation_id</code>, <code>up_to_sequence</code></td><td>Marca como lidas</td></tr>
+              <tr><td><code>sync</code></td><td><code>conversations: [{conversation_id, last_sequence}]</code></td><td>Pede o que chegou offline</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Servidor → cliente</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tipo</th><th>Uso</th></tr></thead>
+            <tbody>
+              <tr><td><code>message.ack</code></td><td>Mensagem aceita (<code>client_id</code>, <code>id</code>, <code>sequence</code>, <code>created_at</code>)</td></tr>
+              <tr><td><code>message.new</code></td><td>Nova mensagem numa conversa do usuário</td></tr>
+              <tr><td><code>message.status</code></td><td>Um membro confirmou entrega ou leitura</td></tr>
+              <tr><td><code>presence</code></td><td>Um contato entrou ou saiu</td></tr>
+              <tr><td><code>conversation.updated</code></td><td>Conversa alterada (ex.: membros)</td></tr>
+              <tr><td><code>sync.end</code></td><td>Fim das mensagens pedidas em <code>sync</code></td></tr>
+              <tr><td><code>error</code></td><td>Erro ao tratar um frame</td></tr>
+              <tr><td><code>server.shutdown</code></td><td>Servidor encerrando</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note"><p>Detalhes completos e decisões do protocolo em <a href="https://github.com/Carlos-E-Souza/linguagens-programacao/blob/main/back-end/PLANO.md#protocolo-websocket" target="_blank" rel="noopener"><code>back-end/PLANO.md</code></a>.</p></div>
+      </section>
+
+      <!-- ================= ESTRUTURA ================= -->
+      <section class="doc" id="estrutura">
+        <h2>Estrutura de pastas<a class="anchor" href="#estrutura" aria-hidden="true">#</a></h2>
+        <pre><code>back-end/                <span class="c">servidor Go</span>
+  cmd/server/            <span class="c">entrada: config, banco, hub, pool, HTTP, shutdown</span>
+  cmd/loadgen/           <span class="c">teste de carga: N clientes WS</span>
+  internal/config/       <span class="c">variáveis de ambiente</span>
+  internal/auth/         <span class="c">bcrypt e JWT</span>
+  internal/db/           <span class="c">SQLite, migrações, repositórios</span>
+  internal/httputil/     <span class="c">handlers REST e upgrade do /ws</span>
+  internal/middleware/   <span class="c">auth, logging, recover</span>
+  internal/hub/          <span class="c">roteamento, presença, status, sync</span>
+  internal/store/        <span class="c">worker pool de persistência</span>
+  internal/ws/           <span class="c">envelope e payloads do protocolo</span>
+front-end/               <span class="c">cliente desktop Wails</span>
+  app.go, live.go, sync.go, conversations.go
+  internal/api/          <span class="c">cliente REST</span>
+  internal/cache/        <span class="c">SQLite local por usuário</span>
+  internal/wsclient/     <span class="c">WS com heartbeat e reconexão</span>
+  internal/queue/        <span class="c">fila de pendentes</span>
+  internal/events/       <span class="c">eventos para a interface</span>
+  frontend/src/          <span class="c">screens, components, actions, state, bridge</span>
+Makefile                 <span class="c">atalhos: make help</span></code></pre>
+      </section>
+
+      <!-- ================= DECISÕES ================= -->
+      <section class="doc" id="decisoes">
+        <h2>Decisões de projeto<a class="anchor" href="#decisoes" aria-hidden="true">#</a></h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Decisão</th><th>Por quê</th></tr></thead>
+            <tbody>
+              <tr><td>SQLite via <code>modernc.org/sqlite</code></td><td>Go puro, dispensa CGO</td></tr>
+              <tr><td><code>net/http</code> sem framework</td><td>Foco nos recursos da própria linguagem</td></tr>
+              <tr><td><code>sequence</code> atribuída pelo Hub</td><td>Goroutine única, sem condição de corrida</td></tr>
+              <tr><td>Persistência em worker pool</td><td>Gravar no banco não atrasa a entrega</td></tr>
+              <tr><td>Cliente lento é desconectado</td><td>Um canal cheio não trava os demais</td></tr>
+              <tr><td>WS autenticado pelo header</td><td>O cliente WS é Go, não navegador</td></tr>
+              <tr><td>Cache local SQLite por usuário</td><td>Sessão e fila de pendentes sobrevivem a reinício</td></tr>
+              <tr><td>pprof só com <code>DEV_MODE</code></td><td>Endpoints de profiling não têm autenticação</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= COMO RODAR ================= -->
+      <section class="doc" id="como-rodar">
+        <h2>Como rodar<a class="anchor" href="#como-rodar" aria-hidden="true">#</a></h2>
+        <p>Pré-requisitos: Go 1.26+, Node/npm, Wails CLI v2 e, no Linux, WebKitGTK 4.1.</p>
+        <pre><code><span class="c"># Terminal 1 — servidor em :8080</span>
+make server
+
+<span class="c"># Terminal 2 — cliente desktop com hot reload</span>
+make dev
+
+<span class="c"># Só a interface, com dados falsos (sem servidor)</span>
+make dev-mock</code></pre>
+        <h3>Testes e qualidade</h3>
+        <pre><code>make test      <span class="c"># testes dos dois módulos com -race</span>
+make vet       <span class="c"># análise estática</span>
+make e2e       <span class="c"># ponta a ponta (servidor em E2E_SERVER_URL)</span>
+make loadgen   <span class="c"># teste de carga: CLIENTS=100 MESSAGES=20</span></code></pre>
+        <div class="note">
+          <p>Fora do modo dev, o servidor exige <code>JWT_SECRET</code>. Copie <code>back-end/.env.example</code> para <code>.env</code> e ajuste os valores.</p>
+        </div>
+      </section>
+
+      <!-- ================= CONVENÇÕES ================= -->
+      <section class="doc" id="convencoes">
+        <h2>Convenções<a class="anchor" href="#convencoes" aria-hidden="true">#</a></h2>
+        <p>
+          <strong>Identificadores em inglês</strong> em todas as camadas (pacotes, funções, tabelas, endpoints,
+          tipos WS, chaves JSON): um dado mantém o mesmo nome do SQL ao JavaScript.
+          <strong>Documentação, comentários e textos da interface em português.</strong>
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Camada</th><th>Exemplo</th></tr></thead>
+            <tbody>
+              <tr><td>Pacotes</td><td><code>internal/hub</code>, <code>internal/store</code></td></tr>
+              <tr><td>Banco</td><td><code>conversation_members</code>, <code>last_read</code></td></tr>
+              <tr><td>Envelope WS</td><td><code>{"type": "message.send", "data": {…}}</code></td></tr>
+              <tr><td>Ambiente</td><td><code>SERVER_ADDRESS</code>, <code>JWT_SECRET</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= VÍDEO ================= -->
+      <section class="doc" id="video">
+        <h2>Vídeo<a class="anchor" href="#video" aria-hidden="true">#</a></h2>
+        <p>Demonstração: login, conversa individual, grupo, presença online e reconexão após uma queda.</p>
+        <div class="video-frame" id="videoFrame">
+          <div class="video-empty">
+            <div class="play"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg></div>
+            <p>O vídeo será exibido aqui. Informe o link na constante <code>VIDEO_URL</code> no final deste arquivo.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="foot">
+        <span>Linguagens de Programação · Universidade de Brasília · 2026</span>
+        <span><a href="https://github.com/Carlos-E-Souza/linguagens-programacao" target="_blank" rel="noopener">Repositório</a> · <a href="#apresentacao">Voltar ao topo</a></span>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    /* ---------- Configuração do vídeo ----------
+       Cole aqui o link do vídeo. Aceita:
+       - YouTube:  https://www.youtube.com/watch?v=XXXX  ou  https://youtu.be/XXXX
+       - Arquivo:  ./demo.mp4  (na mesma pasta do index.html)
+       Deixe vazio para mostrar o espaço reservado. */
+    const VIDEO_URL = "";
+
+    (function () {
+      const root = document.documentElement;
+
+      /* Tema claro/escuro */
+      document.getElementById("themeBtn").addEventListener("click", () => {
+        const dark = root.dataset.theme !== "dark";
+        if (dark) root.dataset.theme = "dark"; else delete root.dataset.theme;
+        localStorage.setItem("theme", dark ? "dark" : "light");
+      });
+
+      /* Índice lateral no celular */
+      const sidebar = document.getElementById("sidebar");
+      const scrim = document.getElementById("scrim");
+      const menuBtn = document.getElementById("menuBtn");
+      const setMenu = (open) => {
+        sidebar.classList.toggle("open", open);
+        scrim.classList.toggle("show", open);
+        menuBtn.setAttribute("aria-expanded", String(open));
+      };
+      menuBtn.addEventListener("click", () => setMenu(!sidebar.classList.contains("open")));
+      scrim.addEventListener("click", () => setMenu(false));
+      sidebar.addEventListener("click", (e) => { if (e.target.closest("a")) setMenu(false); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") setMenu(false); });
+
+      /* Destaca a seção atual no índice e na navbar */
+      const sideLinks = [...sidebar.querySelectorAll("a")];
+      const navGroups = {
+        apresentacao: ["apresentacao", "aplicacoes"],
+        arquitetura: ["arquitetura", "funcionamento", "recursos-go", "confiabilidade"],
+        "api-rest": ["api-rest", "protocolo-ws", "estrutura", "decisoes"],
+        "como-rodar": ["como-rodar", "convencoes"],
+        video: ["video"],
+      };
+      const navLinks = [...document.querySelectorAll(".nav-links a")];
+      const sections = sideLinks.map((a) => document.querySelector(a.getAttribute("href"))).filter(Boolean);
+
+      function markActive(id) {
+        sideLinks.forEach((a) => a.classList.toggle("active", a.getAttribute("href") === "#" + id));
+        navLinks.forEach((a) => a.classList.toggle("active", navGroups[a.dataset.nav].includes(id)));
+      }
+      function onScroll() {
+        const offset = window.innerHeight * 0.3;
+        let current = sections[0].id;
+        for (const s of sections) {
+          if (s.getBoundingClientRect().top - offset <= 0) current = s.id;
+        }
+        if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 2) {
+          current = sections[sections.length - 1].id;
+        }
+        markActive(current);
+      }
+      onScroll();
+      window.addEventListener("scroll", onScroll, { passive: true });
+
+      /* Vídeo */
+      if (VIDEO_URL) {
+        const frame = document.getElementById("videoFrame");
+        const m = VIDEO_URL.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
+        let el;
+        if (m) {
+          el = document.createElement("iframe");
+          el.src = "https://www.youtube-nocookie.com/embed/" + m[1];
+          el.title = "Demonstração do projeto";
+          el.allow = "accelerometer; encrypted-media; picture-in-picture; fullscreen";
+          el.allowFullscreen = true;
+        } else {
+          el = document.createElement("video");
+          el.src = VIDEO_URL;
+          el.controls = true;
+          el.preload = "metadata";
+        }
+        frame.replaceChildren(el);
+      }
+    })();
+  </script>
+</body>
+</html>
