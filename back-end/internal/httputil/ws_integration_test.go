@@ -20,19 +20,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// realtimeFixture is a real HTTP server with a running hub, reached over
-// actual WebSocket connections.
+// realtimeFixture é um servidor HTTP real com um hub rodando, acessado por
+// conexões WebSocket de verdade.
 type realtimeFixture struct {
 	*apiFixture
 	hub *hub.Hub
 	url string
 
-	// stopHub cancels the hub and waits for it; safe to call twice.
+	// stopHub cancela o hub e espera por ele; pode ser chamado duas vezes.
 	stopHub func()
 }
 
-// newRealtimeFixture starts the server with short heartbeat intervals so
-// dead connections are detected quickly.
+// newRealtimeFixture sobe o servidor com intervalos de heartbeat curtos
+// para que conexões mortas sejam detectadas rápido.
 func newRealtimeFixture(t *testing.T, pingInterval, pongTimeout time.Duration) *realtimeFixture {
 	t.Helper()
 
@@ -77,7 +77,7 @@ func newRealtimeFixture(t *testing.T, pingInterval, pongTimeout time.Duration) *
 	}
 }
 
-// dial opens an authenticated WebSocket connection.
+// dial abre uma conexão WebSocket autenticada.
 func (f *realtimeFixture) dial(token string) *websocket.Conn {
 	f.t.Helper()
 
@@ -93,7 +93,7 @@ func (f *realtimeFixture) dial(token string) *websocket.Conn {
 	return conn
 }
 
-// waitOnline polls the hub until the user's presence matches want.
+// waitOnline consulta o hub até a presença do usuário ser igual a want.
 func (f *realtimeFixture) waitOnline(userID int64, want bool, timeout time.Duration) {
 	f.t.Helper()
 
@@ -107,7 +107,7 @@ func (f *realtimeFixture) waitOnline(userID int64, want bool, timeout time.Durat
 	f.t.Fatalf("user %d online=%v not reached within %s", userID, want, timeout)
 }
 
-// readPresence reads frames until a presence event about userID arrives.
+// readPresence lê frames até chegar um evento de presença sobre userID.
 func readPresence(t *testing.T, conn *websocket.Conn, userID int64, timeout time.Duration) ws.PresencePayload {
 	t.Helper()
 
@@ -134,8 +134,8 @@ func readPresence(t *testing.T, conn *websocket.Conn, userID int64, timeout time
 	}
 }
 
-// seedPair registers alice and bob and opens a direct conversation, so
-// each is the other's contact.
+// seedPair cadastra alice e bob e abre uma conversa individual, para que
+// cada um seja contato do outro.
 func (f *realtimeFixture) seedPair() (alice, bob models.User, aliceToken, bobToken string) {
 	f.t.Helper()
 
@@ -153,8 +153,8 @@ func (f *realtimeFixture) seedPair() (alice, bob models.User, aliceToken, bobTok
 	return alice, bob, aliceToken, bobToken
 }
 
-// TestWebSocketTwoClientsSeePresence covers Phase 4 over real sockets: a
-// contact learns when the other connects and when they disconnect.
+// TestWebSocketTwoClientsSeePresence cobre a Fase 4 com sockets reais: um
+// contato fica sabendo quando o outro conecta e quando desconecta.
 func TestWebSocketTwoClientsSeePresence(t *testing.T) {
 	f := newRealtimeFixture(t, time.Minute, 2*time.Minute)
 	alice, bob, aliceToken, bobToken := f.seedPair()
@@ -174,11 +174,12 @@ func TestWebSocketTwoClientsSeePresence(t *testing.T) {
 	}
 }
 
-// TestUnresponsiveClientIsRemoved covers Phase 9: a connection that stops
-// answering pings is dropped from the hub and its contacts are told.
+// TestUnresponsiveClientIsRemoved cobre a Fase 9: uma conexão que para de
+// responder aos pings é retirada do hub e seus contatos são avisados.
 //
-// coder/websocket only answers a ping while the connection is being read,
-// so a client that never calls Read is exactly a peer that went silent.
+// coder/websocket só responde a um ping enquanto a conexão está sendo
+// lida, então um cliente que nunca chama Read é exatamente um par que
+// ficou em silêncio.
 func TestUnresponsiveClientIsRemoved(t *testing.T) {
 	f := newRealtimeFixture(t, 100*time.Millisecond, 500*time.Millisecond)
 	alice, bob, aliceToken, bobToken := f.seedPair()
@@ -187,9 +188,9 @@ func TestUnresponsiveClientIsRemoved(t *testing.T) {
 	defer bobConn.CloseNow()
 	f.waitOnline(bob.ID, true, time.Second)
 
-	// Bob starts reading before Alice connects, so his pings are answered
-	// while we wait for the silent client to time out.
-	silent := f.dial(aliceToken) // never read: will not answer pings
+	// Bob começa a ler antes de Alice conectar, para que os pings dele
+	// sejam respondidos enquanto esperamos o cliente mudo expirar.
+	silent := f.dial(aliceToken) // nunca lê: não vai responder aos pings
 	defer silent.CloseNow()
 	f.waitOnline(alice.ID, true, time.Second)
 	if p := readPresence(t, bobConn, alice.ID, 2*time.Second); !p.Online {
@@ -206,9 +207,9 @@ func TestUnresponsiveClientIsRemoved(t *testing.T) {
 	}
 }
 
-// TestConnectionsDoNotLeakGoroutines covers the Phase 9 leak check:
-// repeated connect/disconnect cycles leave the goroutine count where it
-// started.
+// TestConnectionsDoNotLeakGoroutines cobre a checagem de vazamento da
+// Fase 9: ciclos repetidos de conectar/desconectar deixam o número de
+// goroutines onde começou.
 func TestConnectionsDoNotLeakGoroutines(t *testing.T) {
 	f := newRealtimeFixture(t, time.Minute, 2*time.Minute)
 	alice := f.register("alice")
@@ -221,8 +222,8 @@ func TestConnectionsDoNotLeakGoroutines(t *testing.T) {
 		f.waitOnline(alice.ID, false, time.Second)
 	}
 
-	// One warm-up cycle lets the HTTP client and server settle their
-	// long-lived goroutines before the baseline is taken.
+	// Um ciclo de aquecimento deixa o cliente e o servidor HTTP
+	// estabilizarem suas goroutines de longa duração antes de medir a base.
 	cycle()
 	time.Sleep(100 * time.Millisecond)
 	baseline := runtime.NumGoroutine()
@@ -231,7 +232,7 @@ func TestConnectionsDoNotLeakGoroutines(t *testing.T) {
 		cycle()
 	}
 
-	// Goroutines finish asynchronously after the close handshake.
+	// As goroutines terminam de forma assíncrona após o handshake de close.
 	const tolerance = 3
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -246,8 +247,8 @@ func TestConnectionsDoNotLeakGoroutines(t *testing.T) {
 	}
 }
 
-// TestShutdownClosesSocketsWithGoingAway covers Phase 10 over a real
-// socket: the client gets server.shutdown and then a GoingAway close.
+// TestShutdownClosesSocketsWithGoingAway cobre a Fase 10 com um socket
+// real: o cliente recebe server.shutdown e depois um close GoingAway.
 func TestShutdownClosesSocketsWithGoingAway(t *testing.T) {
 	f := newRealtimeFixture(t, time.Minute, 2*time.Minute)
 	alice := f.register("alice")

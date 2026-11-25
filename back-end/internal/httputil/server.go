@@ -14,37 +14,37 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// maxSearchResults caps how many users a search returns. Without a limit
-// a broad term such as "a" would serialise the whole users table.
+// maxSearchResults limita quantos usuários uma busca devolve. Sem limite,
+// um termo amplo como "a" serializaria a tabela de usuários inteira.
 const maxSearchResults = 20
 
-// defaultMessagePage and maxMessagePage bound the message history
-// pagination: the default keeps a first load small, the maximum stops a
-// client from asking for the entire conversation at once.
+// defaultMessagePage e maxMessagePage limitam a paginação do histórico de
+// mensagens: o padrão mantém pequena a primeira carga, o máximo impede um
+// cliente de pedir a conversa inteira de uma vez.
 const (
 	defaultMessagePage = 50
 	maxMessagePage     = 100
 )
 
-// Presence reports which users currently have an open connection. The
-// hub implements it; keeping it an interface here means the HTTP layer
-// does not depend on the hub package.
+// Presence informa quais usuários têm uma conexão aberta agora. O hub a
+// implementa; mantê-la como interface aqui faz a camada HTTP não depender
+// do pacote hub.
 type Presence interface {
 	IsOnline(userID int64) bool
 }
 
-// TokenValidator validates a raw bearer token and returns the user ID.
-// It mirrors middleware.TokenValidator; the HTTP layer declares its own
-// copy so that httputil and middleware do not import each other.
+// TokenValidator valida um bearer token bruto e devolve o ID do usuário.
+// Espelha middleware.TokenValidator; a camada HTTP declara a própria cópia
+// para que httputil e middleware não importem um ao outro.
 type TokenValidator interface {
 	ValidateToken(raw string) (int64, error)
 }
 
-// Server holds the dependencies shared by every HTTP handler.
+// Server guarda as dependências comuns a todos os handlers HTTP.
 //
-// Handlers are methods on this type rather than free functions so the
-// dependencies travel with them. There is no global state, which is what
-// makes each handler testable in isolation.
+// Os handlers são métodos deste tipo, e não funções soltas, para que as
+// dependências viajem com eles. Não há estado global, o que torna cada
+// handler testável isoladamente.
 type Server struct {
 	cfg       config.Config
 	store     *db.Store
@@ -55,8 +55,8 @@ type Server struct {
 	hub       RealtimeHub
 }
 
-// RealtimeHub is the part of the hub the HTTP layer needs: opening
-// connections, registering them and pushing REST-driven notifications.
+// RealtimeHub é a parte do hub de que a camada HTTP precisa: abrir
+// conexões, registrá-las e enviar notificações originadas no REST.
 type RealtimeHub interface {
 	NewClient(userID int64, conn *websocket.Conn) *hub.Client
 	Register(client *hub.Client)
@@ -66,15 +66,15 @@ type RealtimeHub interface {
 	Notify(ctx context.Context, n hub.Notification)
 }
 
-// SetHub attaches the realtime hub. It is set after construction because
-// the hub itself needs the store, and because tests that do not exercise
-// the WebSocket path can leave it nil.
+// SetHub conecta o hub de tempo real. É definido depois da construção
+// porque o próprio hub precisa do store, e porque os testes que não
+// exercitam o caminho WebSocket podem deixá-lo nil.
 func (s *Server) SetHub(h RealtimeHub) {
 	s.hub = h
 	s.presence = h
 }
 
-// NewServer builds the HTTP layer.
+// NewServer monta a camada HTTP.
 func NewServer(cfg config.Config, store *db.Store, hasher *auth.Hasher, issuer *auth.TokenIssuer) *Server {
 	return &Server{
 		cfg:       cfg,
@@ -85,14 +85,14 @@ func NewServer(cfg config.Config, store *db.Store, hasher *auth.Hasher, issuer *
 	}
 }
 
-// SetPresence attaches the presence source used to annotate users and
-// members with their online state.
+// SetPresence conecta a fonte de presença usada para marcar usuários e
+// membros com seu estado online.
 func (s *Server) SetPresence(p Presence) {
 	s.presence = p
 }
 
-// isOnline reports the online state of a user, defaulting to false when
-// no presence source is wired.
+// isOnline informa o estado online de um usuário, com false como padrão
+// quando nenhuma fonte de presença está conectada.
 func (s *Server) isOnline(userID int64) bool {
 	if s.presence == nil {
 		return false
@@ -100,25 +100,25 @@ func (s *Server) isOnline(userID int64) bool {
 	return s.presence.IsOnline(userID)
 }
 
-// Routes builds the router with every endpoint registered.
+// Routes monta o roteador com todos os endpoints registrados.
 //
-// Go 1.22+ patterns carry the method and the wildcards, so the mux
-// itself rejects a wrong method with 405 and the handler reads the
-// wildcard with r.PathValue. No third-party router is needed.
+// Os padrões do Go 1.22+ trazem o método e os curingas, então o próprio
+// mux rejeita um método errado com 405 e o handler lê o curinga com
+// r.PathValue. Nenhum roteador de terceiros é necessário.
 //
-// Authentication is applied here as a wrapper around the protected
-// subtree rather than inside each handler, so forgetting to protect a new
-// route is a deliberate act instead of an oversight.
+// A autenticação é aplicada aqui como um invólucro da subárvore protegida,
+// e não dentro de cada handler, então deixar uma rota nova desprotegida
+// é um ato deliberado, e não um descuido.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	// Public.
+	// Públicas.
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 	mux.HandleFunc("GET /ws", s.handleWS)
 	mux.HandleFunc("POST /api/auth/register", s.handleRegister)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 
-	// Protected: everything below requires a valid bearer token.
+	// Protegidas: tudo abaixo exige um bearer token válido.
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/users", s.handleSearchUsers)
 	protected.HandleFunc("GET /api/conversations", s.handleListConversations)
@@ -135,20 +135,20 @@ func (s *Server) Routes() http.Handler {
 	return mux
 }
 
-// contextKey is an unexported type for the user ID context key, so it
-// cannot collide with a key set by another package.
+// contextKey é um tipo não exportado para a chave de contexto do ID do
+// usuário, para que não colida com uma chave definida por outro pacote.
 type contextKey struct{}
 
-// userIDKey is where the authenticated user ID is stored.
+// userIDKey é onde o ID do usuário autenticado fica guardado.
 var userIDKey = contextKey{}
 
-// authenticate rejects requests without a valid bearer token and stores
-// the user ID in the request context.
+// authenticate rejeita requisições sem um bearer token válido e guarda o
+// ID do usuário no contexto da requisição.
 //
-// This duplicates middleware.Authenticate by necessity: middleware
-// imports httputil for its error responses, so httputil cannot import
-// middleware back without a cycle. The HTTP layer owns its own copy and
-// UserFromContext reads it.
+// Isto duplica middleware.Authenticate por necessidade: middleware importa
+// httputil para as respostas de erro, então httputil não pode importar
+// middleware de volta sem um ciclo. A camada HTTP tem a própria cópia e
+// UserFromContext a lê.
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.validator == nil {
@@ -176,16 +176,16 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	})
 }
 
-// UserFromContext returns the authenticated user ID and whether it was
-// present. Handlers answer 401 when it is missing, which indicates a
-// route that was registered outside the protected subtree.
+// UserFromContext devolve o ID do usuário autenticado e se ele estava
+// presente. Os handlers respondem 401 quando ele falta, o que indica uma
+// rota registrada fora da subárvore protegida.
 func UserFromContext(ctx context.Context) (int64, bool) {
 	userID, ok := ctx.Value(userIDKey).(int64)
 	return userID, ok
 }
 
-// currentUser fetches the authenticated user ID or writes 401 and
-// reports false, which keeps every handler's opening lines identical.
+// currentUser obtém o ID do usuário autenticado ou escreve 401 e devolve
+// false, o que mantém idênticas as primeiras linhas de todo handler.
 func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	userID, ok := UserFromContext(r.Context())
 	if !ok {
@@ -195,8 +195,8 @@ func (s *Server) currentUser(w http.ResponseWriter, r *http.Request) (int64, boo
 	return userID, true
 }
 
-// logRequestError records a failure that happened while handling a
-// request, so a 500 in the logs can be traced to its cause.
+// logRequestError registra uma falha ocorrida ao tratar uma requisição,
+// para que um 500 nos logs possa ser rastreado até a causa.
 func logRequestError(r *http.Request, code string, err error) {
 	slog.Error("request failed",
 		"code", code,

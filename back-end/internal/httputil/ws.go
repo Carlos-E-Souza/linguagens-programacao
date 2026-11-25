@@ -15,22 +15,22 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// maxFrameBytes bounds a single incoming WebSocket frame. A client that
-// sends more than this is either broken or hostile; either way the
-// connection is closed rather than buffering it.
+// maxFrameBytes limita um único frame WebSocket recebido. Um cliente que
+// manda mais que isso está quebrado ou é hostil; em qualquer caso a
+// conexão é fechada em vez de acumular o frame.
 const maxFrameBytes = 1 << 20 // 1 MiB
 
-// writeTimeout bounds one frame write, so a peer that stops reading
-// cannot pin a goroutine forever.
+// writeTimeout limita a escrita de um frame, para que um par que parou de
+// ler não prenda uma goroutine para sempre.
 const writeTimeout = 10 * time.Second
 
-// handleWS upgrades an authenticated request and hands the connection to
-// the hub.
+// handleWS faz o upgrade de uma requisição autenticada e entrega a conexão
+// ao hub.
 //
-// Authentication happens before the upgrade, using the same bearer token
-// as the REST API. The client is Go, so it can set the header on the
-// handshake; that avoids a query-string token, which would end up in
-// server logs and browser history.
+// A autenticação acontece antes do upgrade, com o mesmo bearer token da
+// API REST. O cliente é Go, então pode definir o header no handshake; isso
+// evita um token na query string, que acabaria nos logs do servidor e no
+// histórico do navegador.
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if s.hub == nil {
 		WriteError(w, http.StatusServiceUnavailable, "not_configured", "the realtime hub is not configured")
@@ -54,8 +54,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// The desktop client is a Wails/Go process, not a browser page, so
-		// it sends no Origin header. The default check would reject it.
+		// O cliente desktop é um processo Wails/Go, não uma página de
+		// navegador, então não envia header Origin. A checagem padrão o
+		// rejeitaria.
 		InsecureSkipVerify: true,
 	})
 	if err != nil {
@@ -68,11 +69,11 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	s.serveConnection(conn, userID)
 }
 
-// serveConnection runs the read and write loops until either fails.
+// serveConnection roda os laços de leitura e escrita até um deles falhar.
 //
-// Both loops share one context, so when either ends the other is
-// cancelled: a reader that fails must not leave a writer blocked on a
-// dead socket, and vice versa.
+// Os dois laços compartilham um contexto, então quando um termina o outro
+// é cancelado: um leitor que falha não pode deixar um escritor bloqueado
+// num socket morto, e vice-versa.
 func (s *Server) serveConnection(conn *websocket.Conn, userID int64) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -88,11 +89,11 @@ func (s *Server) serveConnection(conn *websocket.Conn, userID int64) {
 		defer cancel()
 
 		if s.writeLoop(ctx, client) {
-			// The hub ended the connection (slow client, shutdown). The
-			// close handshake runs here, while the read loop is still
-			// reading, so the peer receives the close frame with the
-			// hub's status. Cancelling first would make the pending Read
-			// tear the socket down without any close frame.
+			// O hub encerrou a conexão (cliente lento, desligamento). O
+			// fechamento acontece aqui, enquanto o laço de leitura ainda
+			// está lendo, para que o par receba o frame de close com o
+			// status do hub. Cancelar antes faria o Read pendente derrubar
+			// o socket sem frame de close nenhum.
 			code, reason := client.CloseStatus()
 			_ = conn.Close(code, reason)
 		}
@@ -104,22 +105,23 @@ func (s *Server) serveConnection(conn *websocket.Conn, userID int64) {
 		s.readLoop(ctx, client)
 	}()
 
-	// Wait for both loops to end, then make sure the hub forgets the
-	// client. Unregister is idempotent, so a double call is harmless.
+	// Espera os dois laços terminarem e garante que o hub esqueça o
+	// cliente. Unregister é idempotente, então chamar duas vezes é
+	// inofensivo.
 	wg.Wait()
 
 	s.hub.Unregister(client)
 
-	// Any other ending (the peer closed, a failed ping or write) already
-	// broke the connection; release it without waiting for a handshake
-	// with a peer that may be gone.
+	// Qualquer outro encerramento (o par fechou, falha de ping ou de
+	// escrita) já quebrou a conexão; libera-a sem esperar um handshake com
+	// um par que talvez já tenha sumido.
 	_ = conn.CloseNow()
 }
 
-// readLoop decodes frames and hands them to the hub.
+// readLoop decodifica os frames e os entrega ao hub.
 //
-// It never touches hub state directly: every frame goes through the
-// hub's incoming channel, which is what keeps the hub single-threaded.
+// Ele nunca mexe no estado do hub diretamente: todo frame passa pelo canal
+// de entrada do hub, o que mantém o hub em uma única goroutine.
 func (s *Server) readLoop(ctx context.Context, client *hub.Client) {
 	for {
 		msgType, data, err := client.Read(ctx)
@@ -147,18 +149,19 @@ func (s *Server) readLoop(ctx context.Context, client *hub.Client) {
 	}
 }
 
-// writeLoop drains the outgoing queue and writes each frame. It reports
-// whether it stopped because the hub closed the client, as opposed to a
-// failed write or ping, or the read side ending.
+// writeLoop drena a fila de saída e escreve cada frame. Informa se parou
+// porque o hub fechou o cliente, e não por falha de escrita ou de ping,
+// ou pelo fim do lado de leitura.
 //
-// A single writer per connection is what makes the WebSocket safe:
-// coder/websocket allows only one concurrent writer, and serialising here
-// means the hub can hand frames over without coordinating.
+// Um único escritor por conexão é o que torna o WebSocket seguro:
+// coder/websocket permite só um escritor por vez, e serializar aqui
+// permite ao hub entregar frames sem coordenação.
 func (s *Server) writeLoop(ctx context.Context, client *hub.Client) (hubClosed bool) {
-	// One goroutine forwards the outgoing queue into a plain channel, so
-	// the loop below can select on frames and the heartbeat timer at the
-	// same time. Starting it once — rather than per frame — keeps the
-	// goroutine count flat and avoids leaking a goroutine per message.
+	// Uma goroutine repassa a fila de saída para um canal simples, para
+	// que o laço abaixo possa fazer select nos frames e no timer do
+	// heartbeat ao mesmo tempo. Iniciá-la uma vez — e não a cada frame —
+	// mantém estável o número de goroutines e evita vazar uma goroutine
+	// por mensagem.
 	frames := make(chan []byte)
 	go func() {
 		defer close(frames)
@@ -186,9 +189,9 @@ func (s *Server) writeLoop(ctx context.Context, client *hub.Client) (hubClosed b
 			return false
 
 		case <-ticker.C:
-			// The ping doubles as a liveness probe: if the peer is gone,
-			// the write fails and tearing the connection down here is
-			// what releases its goroutines and marks the user offline.
+			// O ping serve também de teste de vida: se o par sumiu, a
+			// escrita falha, e derrubar a conexão aqui é o que libera as
+			// goroutines dela e marca o usuário como offline.
 			pingCtx, cancel := context.WithTimeout(ctx, s.cfg.PongTimeout)
 			err := client.Ping(pingCtx)
 			cancel()
@@ -201,8 +204,8 @@ func (s *Server) writeLoop(ctx context.Context, client *hub.Client) (hubClosed b
 
 		case frame, ok := <-frames:
 			if !ok {
-				// The queue is closed while the connection's own
-				// context is alive: the hub closed this client.
+				// A fila foi fechada enquanto o contexto da própria
+				// conexão está vivo: o hub fechou este cliente.
 				return ctx.Err() == nil
 			}
 

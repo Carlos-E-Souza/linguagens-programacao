@@ -12,8 +12,8 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// newStoreFixture opens a migrated database and returns a real Store, so
-// these tests exercise the actual SQL rather than a fake.
+// newStoreFixture abre um banco migrado e devolve um Store real, para que
+// estes testes exercitem o SQL de verdade em vez de um dublê.
 func newStoreFixture(t *testing.T) *db.Store {
 	t.Helper()
 
@@ -30,8 +30,8 @@ func newStoreFixture(t *testing.T) *db.Store {
 	return db.NewStore(handle)
 }
 
-// seedConversation creates the users and conversation a message needs, so
-// the foreign keys are satisfied.
+// seedConversation cria os usuários e a conversa de que uma mensagem
+// precisa, para satisfazer as chaves estrangeiras.
 func seedConversation(t *testing.T, s *db.Store) models.Conversation {
 	t.Helper()
 
@@ -55,8 +55,8 @@ func seedConversation(t *testing.T, s *db.Store) models.Conversation {
 	return conv
 }
 
-// TestPoolPersistsEnqueuedMessages is the end-to-end guarantee: what the
-// hub enqueues ends up in the database after a flush.
+// TestPoolPersistsEnqueuedMessages é a garantia de ponta a ponta: o que o
+// hub enfileira acaba no banco depois de um despacho.
 func TestPoolPersistsEnqueuedMessages(t *testing.T) {
 	ctx := context.Background()
 	store := newStoreFixture(t)
@@ -84,7 +84,7 @@ func TestPoolPersistsEnqueuedMessages(t *testing.T) {
 		}
 	}
 
-	// Wait for the flush rather than racing it.
+	// Espera o despacho em vez de disputar com ele.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		messages, err := store.ListMessages(ctx, conv.ID, 0, 10)
@@ -105,7 +105,7 @@ func TestPoolPersistsEnqueuedMessages(t *testing.T) {
 		t.Fatalf("persisted messages: got %d, want %d", got, want)
 	}
 
-	// The returned rows carry the assigned IDs and sequences.
+	// As linhas devolvidas trazem os IDs e sequences atribuídos.
 	for i, msg := range messages {
 		if msg.ID == 0 {
 			t.Errorf("message %d has no ID", i)
@@ -115,7 +115,7 @@ func TestPoolPersistsEnqueuedMessages(t *testing.T) {
 		}
 	}
 
-	// last_sequence must have advanced so the hub can prime itself.
+	// last_sequence precisa ter avançado para o hub poder se inicializar.
 	last, err := store.LastSequence(ctx, conv.ID)
 	if err != nil {
 		t.Fatalf("LastSequence() failed: %v", err)
@@ -129,8 +129,8 @@ func TestPoolPersistsEnqueuedMessages(t *testing.T) {
 	}
 }
 
-// TestPoolShutdownDrainsQueue covers the graceful-shutdown promise: a
-// message accepted before shutdown must still be written.
+// TestPoolShutdownDrainsQueue cobre a promessa do desligamento gracioso:
+// uma mensagem aceita antes do desligamento ainda precisa ser gravada.
 func TestPoolShutdownDrainsQueue(t *testing.T) {
 	ctx := context.Background()
 	store := newStoreFixture(t)
@@ -139,8 +139,8 @@ func TestPoolShutdownDrainsQueue(t *testing.T) {
 	pool := NewPool(store, Options{
 		Workers:     1,
 		QueueSize:   64,
-		BatchSize:   64,        // large, so nothing flushes early
-		FlushEvery:  time.Hour, // effectively never
+		BatchSize:   64,        // grande, para nada despachar antes da hora
+		FlushEvery:  time.Hour, // na prática, nunca
 		EnqueueWait: time.Second,
 	})
 
@@ -170,8 +170,8 @@ func TestPoolShutdownDrainsQueue(t *testing.T) {
 	}
 }
 
-// TestPoolRejectsEnqueueAfterShutdown documents that the pool fails
-// loudly rather than accepting a message it will never write.
+// TestPoolRejectsEnqueueAfterShutdown documenta que o pool falha de forma
+// visível em vez de aceitar uma mensagem que nunca vai gravar.
 func TestPoolRejectsEnqueueAfterShutdown(t *testing.T) {
 	ctx := context.Background()
 	store := newStoreFixture(t)
@@ -196,8 +196,8 @@ func TestPoolRejectsEnqueueAfterShutdown(t *testing.T) {
 	}
 }
 
-// TestPoolShutdownIsIdempotent guards against a double close panic, since
-// several shutdown paths can run.
+// TestPoolShutdownIsIdempotent protege contra um panic de fechamento
+// duplo, já que vários caminhos de desligamento podem rodar.
 func TestPoolShutdownIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	store := newStoreFixture(t)
@@ -211,8 +211,8 @@ func TestPoolShutdownIsIdempotent(t *testing.T) {
 	}
 }
 
-// blockingWriter holds every write until release is closed, so a test can
-// fill the queue behind a worker that is busy.
+// blockingWriter segura toda gravação até release ser fechado, para que um
+// teste possa encher a fila atrás de um worker ocupado.
 type blockingWriter struct {
 	release chan struct{}
 	started chan struct{}
@@ -238,10 +238,10 @@ func (w *blockingWriter) InsertMessages(ctx context.Context, messages []models.M
 	return stored, nil
 }
 
-// TestPoolFullQueueAppliesBackpressure covers Phase 6: with the queue
-// full, Enqueue waits up to EnqueueWait and then fails instead of
-// silently dropping the message, and everything it did accept is still
-// written once the writer recovers.
+// TestPoolFullQueueAppliesBackpressure cobre a Fase 6: com a fila cheia,
+// Enqueue espera até EnqueueWait e então falha em vez de descartar a
+// mensagem em silêncio, e tudo o que ele aceitou ainda é gravado quando o
+// gravador se recupera.
 func TestPoolFullQueueAppliesBackpressure(t *testing.T) {
 	writer := &blockingWriter{release: make(chan struct{}), started: make(chan struct{})}
 
@@ -259,18 +259,18 @@ func TestPoolFullQueueAppliesBackpressure(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// The first message is taken by the worker, which then blocks.
+	// A primeira mensagem é pega pelo worker, que então bloqueia.
 	if _, err := pool.Enqueue(ctx, msg(1)); err != nil {
 		t.Fatalf("Enqueue(1) failed: %v", err)
 	}
 	<-writer.started
 
-	// The second one fills the single queue slot.
+	// A segunda ocupa a única vaga da fila.
 	if _, err := pool.Enqueue(ctx, msg(2)); err != nil {
 		t.Fatalf("Enqueue(2) failed: %v", err)
 	}
 
-	// The third one has nowhere to go: it must wait, then fail.
+	// A terceira não tem para onde ir: precisa esperar e então falhar.
 	start := time.Now()
 	if _, err := pool.Enqueue(ctx, msg(3)); err == nil {
 		t.Fatal("Enqueue(3) succeeded on a full queue; want an error")

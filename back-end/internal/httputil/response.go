@@ -1,6 +1,6 @@
-// Package httputil implements the HTTP surface of the server: the REST
-// handlers, the /ws upgrade endpoint and the small JSON helpers shared
-// by all of them.
+// Pacote httputil implementa a superfície HTTP do servidor: os handlers
+// REST, o endpoint de upgrade /ws e os pequenos helpers de JSON usados por
+// todos eles.
 package httputil
 
 import (
@@ -12,23 +12,23 @@ import (
 	"net/http"
 )
 
-// maxRequestBody caps how much of a request body we are willing to read.
-// Without a limit, a client could stream gigabytes into memory and take
-// the server down, so every decoded body goes through MaxBytesReader.
+// maxRequestBody limita quanto do corpo de uma requisição aceitamos ler.
+// Sem limite, um cliente poderia despejar gigabytes na memória e derrubar
+// o servidor, então todo corpo decodificado passa por MaxBytesReader.
 const maxRequestBody = 1 << 20 // 1 MiB
 
-// ErrorBody is the JSON shape of every error response. Using one shape
-// for all failures means the client has a single branch to write.
+// ErrorBody é o formato JSON de toda resposta de erro. Um formato único
+// para todas as falhas significa que o cliente só tem um caso a tratar.
 type ErrorBody struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-// WriteJSON serializes v as JSON with the given status code.
+// WriteJSON serializa v como JSON com o código de status informado.
 //
-// The body is marshalled before any header is written on purpose: if
-// marshalling failed after WriteHeader, we would have already committed
-// a 200 and could only send a broken body.
+// O corpo é serializado antes de qualquer header ser escrito de propósito:
+// se a serialização falhasse depois de WriteHeader, já teríamos enviado um
+// 200 e só restaria mandar um corpo quebrado.
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -41,22 +41,23 @@ func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 
 	if _, err := w.Write(raw); err != nil {
-		// The client hung up mid-write. Nothing useful is left to do:
-		// the status is already sent, so we only log it.
+		// O cliente desligou no meio da escrita. Não há mais nada útil a
+		// fazer: o status já foi enviado, então só registramos no log.
 		slog.Debug("failed to write response body", "error", err)
 	}
 }
 
-// WriteError writes an error response in the standard ErrorBody shape.
+// WriteError escreve uma resposta de erro no formato padrão ErrorBody.
 func WriteError(w http.ResponseWriter, status int, code, message string) {
 	WriteJSON(w, status, ErrorBody{Code: code, Message: message})
 }
 
-// ReadJSON decodes the request body into dst.
+// ReadJSON decodifica o corpo da requisição em dst.
 //
-// It is strict by design: the body is capped in size, unknown fields are
-// rejected (so a client typo fails loudly instead of being ignored) and
-// trailing data after the JSON value is treated as an error.
+// É estrito por projeto: o corpo tem tamanho limitado, campos
+// desconhecidos são rejeitados (um erro de digitação do cliente falha de
+// forma visível em vez de ser ignorado) e dados após o valor JSON contam
+// como erro.
 func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 
@@ -67,8 +68,9 @@ func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		return fmt.Errorf("decode request body: %w", err)
 	}
 
-	// A well-formed request has exactly one JSON value. Anything after
-	// it means the client sent something we do not understand.
+	// Uma requisição bem formada tem exatamente um valor JSON. Qualquer
+	// coisa depois dele significa que o cliente mandou algo que não
+	// entendemos.
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return errors.New("request body must contain a single JSON value")
 	}

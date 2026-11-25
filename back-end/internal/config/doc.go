@@ -1,10 +1,10 @@
-// Package config loads and validates the server configuration from
-// environment variables.
+// Pacote config carrega e valida a configuração do servidor a partir das
+// variáveis de ambiente.
 //
-// Load reads every setting once and returns an immutable Config, so the
-// rest of the program never touches os.Getenv and there is a single
-// place to look when a value is wrong. It fails fast on configurations
-// that would be unsafe or nonsensical at runtime: an empty JWT_SECRET
-// outside dev mode, fewer than one persistence worker, or an invalid
-// ping/pong pair. Durations require an explicit unit (30s, 24h).
+// Load lê cada configuração uma vez e devolve uma Config imutável, para
+// que o resto do programa nunca chame os.Getenv e exista um único lugar a
+// olhar quando um valor estiver errado. Ele falha cedo em configurações
+// que seriam inseguras ou sem sentido em execução: JWT_SECRET vazio fora
+// do modo dev, menos de um worker de persistência ou um par ping/pong
+// inválido. Durações exigem unidade explícita (30s, 24h).
 package config

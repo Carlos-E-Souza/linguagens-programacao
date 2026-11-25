@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// stubValidator stands in for auth.TokenIssuer so the middleware can be
-// tested without minting real JWTs.
+// stubValidator faz o papel de auth.TokenIssuer para que o middleware seja
+// testado sem gerar JWTs reais.
 type stubValidator struct {
 	userID int64
 	err    error
@@ -22,8 +22,8 @@ func (s stubValidator) ValidateToken(raw string) (int64, error) {
 	return s.userID, nil
 }
 
-// echoUserID is a protected handler that reports the user ID it was
-// given, so the test can prove the value travelled through the context.
+// echoUserID é um handler protegido que informa o ID de usuário que
+// recebeu, para o teste provar que o valor passou pelo contexto.
 func echoUserID(w http.ResponseWriter, r *http.Request) {
 	userID, ok := UserFromContext(r.Context())
 	if !ok {
@@ -87,8 +87,8 @@ func TestAuthenticateRejectsBadRequests(t *testing.T) {
 	}
 }
 
-// TestUserFromContextWithoutMiddleware documents the failure mode a
-// routing mistake would produce.
+// TestUserFromContextWithoutMiddleware documenta a falha que um erro de
+// roteamento produziria.
 func TestUserFromContextWithoutMiddleware(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 

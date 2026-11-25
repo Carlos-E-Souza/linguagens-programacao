@@ -21,8 +21,8 @@ import (
 	storepkg "github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/store"
 )
 
-// shutdownTimeout bounds how long we wait for in-flight requests before
-// giving up and closing the process anyway.
+// shutdownTimeout limita quanto tempo esperamos pelas requisições em
+// andamento antes de desistir e encerrar o processo mesmo assim.
 const shutdownTimeout = 15 * time.Second
 
 func main() {
@@ -32,16 +32,16 @@ func main() {
 	}
 }
 
-// run holds the real logic so that every failure path can return an
-// error instead of calling os.Exit, which would skip deferred cleanup.
+// run contém a lógica real para que todo caminho de falha possa devolver
+// um erro em vez de chamar os.Exit, que pularia a limpeza adiada (defer).
 func run() error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
 
-	// JSON logs by default: one line per event, easy to grep and to feed
-	// into a log collector.
+	// Logs em JSON por padrão: uma linha por evento, fácil de filtrar com
+	// grep e de enviar a um coletor de logs.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})))
@@ -66,12 +66,12 @@ func run() error {
 		return err
 	}
 
-	// The persistence pool and the hub are started before the HTTP server
-	// so that a request arriving immediately already has both available.
+	// O pool de persistência e o hub sobem antes do servidor HTTP para que
+	// uma requisição que chegue de imediato já encontre os dois prontos.
 	//
-	// The pool is not tied to ctx on purpose: ctx is cancelled by the
-	// signal, while the hub may still accept messages until it is stopped
-	// below. The pool only stops through pool.Shutdown, which drains it.
+	// O pool não fica preso a ctx de propósito: ctx é cancelado pelo sinal,
+	// enquanto o hub ainda pode aceitar mensagens até ser parado mais
+	// abaixo. O pool só para por pool.Shutdown, que o drena.
 	pool := storepkg.NewPool(store, storepkg.DefaultOptions(cfg.PersistenceQueueSize, cfg.PersistenceWorkers))
 
 	realtime := hub.New(cfg, store, pool)
@@ -89,13 +89,13 @@ func run() error {
 	api := httputil.NewServer(cfg, store, auth.DefaultHasher(), issuer)
 	api.SetHub(realtime)
 
-	// Order matters: Recover is outermost so it also catches a panic
-	// raised inside Logging itself.
+	// A ordem importa: Recover fica por fora para capturar também um panic
+	// disparado dentro do próprio Logging.
 	handler := middleware.Recover(middleware.Logging(api.Routes()))
 
-	// The profiler runs on its own address so the public port never
-	// exposes it. config.Load already refuses a PPROF_ADDRESS outside dev
-	// mode, which is why no extra guard is needed here.
+	// O profiler roda em endereço próprio para que a porta pública nunca o
+	// exponha. config.Load já recusa PPROF_ADDRESS fora do modo dev, por
+	// isso nenhuma proteção extra é necessária aqui.
 	debugServer, err := startDebugServer(cfg)
 	if err != nil {
 		return err
@@ -126,9 +126,9 @@ func run() error {
 		slog.Info("shutdown signal received, draining connections")
 	}
 
-	// Stop accepting new requests and wait for the in-flight ones. The
-	// context is fresh on purpose: ctx is already cancelled at this
-	// point, so reusing it would abort the drain immediately.
+	// Para de aceitar novas requisições e espera as que estão em andamento.
+	// O contexto é novo de propósito: ctx já está cancelado neste ponto,
+	// então reutilizá-lo abortaria a drenagem na hora.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
@@ -142,9 +142,9 @@ func run() error {
 		}
 	}
 
-	// Order matters. The hub stops first so no new message is accepted,
-	// then the pool drains everything already accepted, and only then is
-	// the database closed underneath it.
+	// A ordem importa. O hub para primeiro para que nenhuma mensagem nova
+	// seja aceita, depois o pool drena tudo o que já foi aceito, e só então
+	// o banco é fechado por baixo dele.
 	stopHub()
 	background.Wait()
 
@@ -156,13 +156,13 @@ func run() error {
 	return nil
 }
 
-// startDebugServer serves net/http/pprof on its own address when
-// PPROF_ADDRESS is set, and returns nil when it is not.
+// startDebugServer serve net/http/pprof em endereço próprio quando
+// PPROF_ADDRESS está definido, e devolve nil quando não está.
 //
-// The endpoints are registered on a dedicated mux rather than on the main
-// one so that a public deployment cannot reach them even by guessing the
-// path, and so the profiler can be reached without authentication while
-// the API stays protected.
+// Os endpoints são registrados num mux dedicado em vez do principal para
+// que uma instalação pública não os alcance nem adivinhando o caminho, e
+// para que o profiler fique acessível sem autenticação enquanto a API
+// continua protegida.
 func startDebugServer(cfg config.Config) (*http.Server, error) {
 	if cfg.PprofAddress == "" {
 		return nil, nil

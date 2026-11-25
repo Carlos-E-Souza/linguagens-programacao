@@ -1,10 +1,10 @@
-// Package middleware provides the HTTP middlewares applied to the
-// server routes: JWT authentication and request logging, plus the
-// recovery that turns a panic into a 500 response and a log entry
-// instead of dropping the connection.
+// Pacote middleware fornece os middlewares HTTP aplicados às rotas do
+// servidor: autenticação JWT e log de requisições, além da recuperação que
+// transforma um panic numa resposta 500 e numa entrada de log em vez de
+// derrubar a conexão.
 //
-// Authenticate extracts the bearer token from the Authorization header,
-// validates it and stores the user ID in the request context under an
-// unexported key type, which prevents collisions with keys set by other
-// packages; handlers read it back with UserFromContext.
+// Authenticate extrai o bearer token do header Authorization, o valida e
+// guarda o ID do usuário no contexto da requisição sob um tipo de chave
+// não exportado, o que evita colisões com chaves definidas por outros
+// pacotes; os handlers o leem de volta com UserFromContext.
 package middleware

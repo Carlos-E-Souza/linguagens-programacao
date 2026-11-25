@@ -1,9 +1,9 @@
-// Package auth issues and validates the authentication credentials of
-// the server: it hashes and verifies user passwords with bcrypt and
-// generates and validates the JWT access tokens (HS256).
+// Pacote auth emite e valida as credenciais de autenticação do servidor:
+// gera e confere o hash das senhas com bcrypt e gera e valida os tokens
+// de acesso JWT (HS256).
 //
-// The package is deliberately free of HTTP and database concerns. The
-// REST handlers decide when to call it and the middleware decides how
-// the resulting token travels in the Authorization header, which keeps
-// the security rules in one place and easy to test.
+// O pacote não lida com HTTP nem com banco, de propósito. Os handlers
+// REST decidem quando chamá-lo e o middleware decide como o token
+// resultante trafega no header Authorization, o que mantém as regras de
+// segurança num só lugar e fáceis de testar.
 package auth

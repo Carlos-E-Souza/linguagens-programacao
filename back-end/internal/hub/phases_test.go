@@ -14,9 +14,9 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// TestReceiptsAreBroadcastOnceAndPersisted covers Phase 7: a delivered or
-// read confirmation reaches the other members exactly once and moves the
-// member's watermark in the database.
+// TestReceiptsAreBroadcastOnceAndPersisted cobre a Fase 7: uma confirmação
+// de entrega ou leitura chega aos outros membros exatamente uma vez e move
+// a marca do membro no banco.
 func TestReceiptsAreBroadcastOnceAndPersisted(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, conv := f.createUsers(t)
@@ -48,21 +48,21 @@ func TestReceiptsAreBroadcastOnceAndPersisted(t *testing.T) {
 			t.Errorf("%s: got %+v", tc.kind, status)
 		}
 
-		// A second copy of the same status is the duplicate this test
-		// guards against.
+		// Uma segunda cópia do mesmo status é a duplicata contra a qual
+		// este teste protege.
 		for _, extra := range aliceClient.drain(300 * time.Millisecond) {
 			if decodeType(t, extra) == ws.TypeMessageStatus {
 				t.Errorf("%s: message.status was delivered more than once", tc.kind)
 			}
 		}
 
-		// The sender of the receipt must not get it back.
+		// Quem enviou a confirmação não pode recebê-la de volta.
 		if _, ok := bobClient.claim(ws.TypeMessageStatus); ok {
 			t.Errorf("%s: the member who confirmed received their own status", tc.kind)
 		}
 	}
 
-	// The watermark write is asynchronous, so poll for it.
+	// A gravação da marca é assíncrona, então consulta até aparecer.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		members, err := f.store.ListMembers(context.Background(), conv.ID)
@@ -79,9 +79,9 @@ func TestReceiptsAreBroadcastOnceAndPersisted(t *testing.T) {
 	t.Error("bob's watermarks were not persisted (want last_delivered=2, last_read=2)")
 }
 
-// TestConcurrentSendsGetUniqueOrderedSequences covers Phase 5: many
-// connections sending at once into one conversation still produce the
-// sequences 1..N with no gap and no repeat.
+// TestConcurrentSendsGetUniqueOrderedSequences cobre a Fase 5: muitas
+// conexões enviando ao mesmo tempo para uma conversa ainda produzem as
+// sequences 1..N sem buraco e sem repetição.
 func TestConcurrentSendsGetUniqueOrderedSequences(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, conv := f.createUsers(t)
@@ -137,9 +137,9 @@ func TestConcurrentSendsGetUniqueOrderedSequences(t *testing.T) {
 	}
 }
 
-// TestReconnectSyncDeliversMissedMessagesOnce covers Phase 8: a member who
-// saw message 1, went offline and came back gets exactly the messages
-// after 1, in order, and then sync.end.
+// TestReconnectSyncDeliversMissedMessagesOnce cobre a Fase 8: um membro
+// que viu a mensagem 1, ficou offline e voltou recebe exatamente as
+// mensagens depois da 1, em ordem, e então sync.end.
 func TestReconnectSyncDeliversMissedMessagesOnce(t *testing.T) {
 	f := newHubFixture(t)
 	alice, bob, conv := f.createUsers(t)
@@ -159,7 +159,7 @@ func TestReconnectSyncDeliversMissedMessagesOnce(t *testing.T) {
 	send(1)
 	waitForType(t, bobClient, ws.TypeMessageNew, 2*time.Second)
 
-	// Bob drops off.
+	// Bob cai.
 	bobClient.close()
 	f.hub.Unregister(bobClient.Client)
 
@@ -195,16 +195,15 @@ func TestReconnectSyncDeliversMissedMessagesOnce(t *testing.T) {
 	}
 }
 
-// TestAcceptedMessagesSurviveShutdown covers Phase 10 with the real
-// persistence pool: every message that was acknowledged is in the
-// database once the hub is stopped and the pool is shut down, in the same
-// order cmd/server uses.
+// TestAcceptedMessagesSurviveShutdown cobre a Fase 10 com o pool de
+// persistência real: toda mensagem confirmada está no banco depois que o
+// hub para e o pool é encerrado, na mesma ordem usada por cmd/server.
 func TestAcceptedMessagesSurviveShutdown(t *testing.T) {
 	f := newHubFixture(t)
 	alice, _, conv := f.createUsers(t)
 
-	// A slow flush interval means the messages are still queued when the
-	// shutdown starts, which is the case that used to lose them.
+	// Um intervalo de despacho lento faz as mensagens ainda estarem na
+	// fila quando o desligamento começa, que é o caso que as perdia.
 	pool := store.NewPool(f.store, store.Options{
 		Workers:     2,
 		QueueSize:   128,
@@ -236,8 +235,8 @@ func TestAcceptedMessagesSurviveShutdown(t *testing.T) {
 		}
 	}
 
-	// Wait until every message has been accepted by the hub, which is the
-	// moment it was delivered and handed to the pool.
+	// Espera até toda mensagem ser aceita pelo hub, que é o momento em que
+	// ela foi entregue e passada ao pool.
 	accepted := 0
 	deadline := time.After(3 * time.Second)
 	for accepted < total {

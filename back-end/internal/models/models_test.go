@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// TestUserJSONNeverExposesPasswordHash is the important one: a leaked
-// password hash cannot be undone, so we assert the marshalled output
-// does not contain it at all.
+// TestUserJSONNeverExposesPasswordHash é o caso importante: um hash de
+// senha vazado não tem volta, então conferimos que a saída serializada
+// não o contém de jeito nenhum.
 func TestUserJSONNeverExposesPasswordHash(t *testing.T) {
 	user := User{
 		ID:           1,
@@ -27,15 +27,15 @@ func TestUserJSONNeverExposesPasswordHash(t *testing.T) {
 	if strings.Contains(string(raw), "super-secret-hash") {
 		t.Fatalf("password hash leaked into JSON: %s", raw)
 	}
-	// The field must be absent, not merely empty.
+	// O campo precisa estar ausente, não apenas vazio.
 	if strings.Contains(string(raw), "password_hash") {
 		t.Fatalf("password_hash key present in JSON: %s", raw)
 	}
 }
 
-// TestJSONFieldNames locks the wire contract. Every key here is also a
-// column name in migrations/0001_initial.sql, which is the point of the
-// naming convention: one name from SQL to JavaScript.
+// TestJSONFieldNames trava o contrato de transmissão. Toda chave aqui
+// também é nome de coluna em migrations/0001_initial.sql, que é o sentido
+// da convenção de nomes: um só nome do SQL ao JavaScript.
 func TestJSONFieldNames(t *testing.T) {
 	msg := Message{
 		ID:             7,
@@ -71,9 +71,9 @@ func TestJSONFieldNames(t *testing.T) {
 	}
 }
 
-// TestConversationOmitsEmptyName checks the omitempty behaviour: a direct
-// conversation has no name, and the client should not receive a null
-// field it has to special-case.
+// TestConversationOmitsEmptyName confere o comportamento de omitempty: uma
+// conversa individual não tem nome, e o cliente não deve receber um campo
+// null que precise tratar como caso especial.
 func TestConversationOmitsEmptyName(t *testing.T) {
 	conv := Conversation{
 		ID:        1,
@@ -91,8 +91,8 @@ func TestConversationOmitsEmptyName(t *testing.T) {
 	}
 }
 
-// TestConstantValues pins the strings written to the database. Changing
-// one of these silently is a data migration, so the test makes it loud.
+// TestConstantValues fixa as strings gravadas no banco. Mudar uma delas em
+// silêncio é uma migração de dados, então o teste torna isso visível.
 func TestConstantValues(t *testing.T) {
 	cases := map[string]string{
 		"direct":    ConversationDirect,

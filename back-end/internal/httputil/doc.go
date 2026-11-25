@@ -1,12 +1,12 @@
-// Package httputil implements the HTTP surface of the server: the REST
-// handlers for authentication, users, conversations and messages, the
-// /ws upgrade endpoint that hands the connection over to the hub, and
-// the small JSON helpers shared by all of them.
+// Pacote httputil implementa a superfície HTTP do servidor: os handlers
+// REST de autenticação, usuários, conversas e mensagens, o endpoint de
+// upgrade /ws que entrega a conexão ao hub e os pequenos helpers de JSON
+// usados por todos eles.
 //
-// Routing uses http.ServeMux with the Go 1.22+ method-and-wildcard
-// patterns, so a route such as "GET /api/conversations/{id}/messages"
-// is matched and its variables read with r.PathValue. WriteJSON,
-// WriteError and ReadJSON centralise the response format and the
-// request limits (MaxBytesReader plus DisallowUnknownFields), which
-// keeps every endpoint answering with the same shape of body.
+// O roteamento usa http.ServeMux com os padrões de método e curinga do Go
+// 1.22+, então uma rota como "GET /api/conversations/{id}/messages" é
+// casada e suas variáveis lidas com r.PathValue. WriteJSON, WriteError e
+// ReadJSON centralizam o formato das respostas e os limites das
+// requisições (MaxBytesReader mais DisallowUnknownFields), o que mantém
+// todo endpoint respondendo com o mesmo formato de corpo.
 package httputil

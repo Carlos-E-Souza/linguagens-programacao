@@ -10,12 +10,12 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// CreateConversation inserts a conversation together with its members in
-// a single transaction.
+// CreateConversation insere uma conversa junto com seus membros numa única
+// transação.
 //
-// The transaction is not optional: a conversation without members would
-// be unreachable, and a half-created one would be invisible to the very
-// users who just created it.
+// A transação não é opcional: uma conversa sem membros seria
+// inalcançável, e uma criada pela metade ficaria invisível justamente
+// para os usuários que acabaram de criá-la.
 func (s *Store) CreateConversation(
 	ctx context.Context,
 	convType, name string,
@@ -35,8 +35,8 @@ func (s *Store) CreateConversation(
 			INSERT INTO conversations (type, name, created_by, last_sequence, created_at)
 			VALUES (?, ?, ?, 0, ?)`
 
-		// name is NULL for a direct conversation: the column allows it
-		// and an empty string would be a second way to spell "no name".
+		// name é NULL numa conversa individual: a coluna permite, e uma
+		// string vazia seria uma segunda forma de dizer "sem nome".
 		var sqlName any
 		if name != "" {
 			sqlName = name
@@ -87,7 +87,7 @@ func (s *Store) CreateConversation(
 	return conv, nil
 }
 
-// GetConversation loads one conversation by ID.
+// GetConversation carrega uma conversa pelo ID.
 func (s *Store) GetConversation(ctx context.Context, id int64) (models.Conversation, error) {
 	const query = `
 		SELECT id, type, name, created_by, last_sequence, created_at
@@ -97,13 +97,13 @@ func (s *Store) GetConversation(ctx context.Context, id int64) (models.Conversat
 	return scanConversation(s.db.QueryRowContext(ctx, query, id))
 }
 
-// GetDirectConversation returns the existing 1:1 conversation between two
-// users, or ErrNotFound when they have never talked.
+// GetDirectConversation devolve a conversa 1:1 existente entre dois
+// usuários, ou ErrNotFound quando eles nunca conversaram.
 //
-// The member count comes from a subquery over conversation_members rather
-// than from COUNT(*) on the joined rows: the two joins above already
-// restrict the result to this pair, so counting joined rows would always
-// yield 1 and the HAVING clause would never match.
+// A contagem de membros vem de uma subconsulta em conversation_members e
+// não de COUNT(*) sobre as linhas do join: os dois joins acima já
+// restringem o resultado a este par, então contar as linhas do join daria
+// sempre 1 e a cláusula HAVING nunca casaria.
 func (s *Store) GetDirectConversation(ctx context.Context, userA, userB int64) (models.Conversation, error) {
 	const query = `
 		SELECT c.id, c.type, c.name, c.created_by, c.last_sequence, c.created_at
@@ -118,19 +118,20 @@ func (s *Store) GetDirectConversation(ctx context.Context, userA, userB int64) (
 	return scanConversation(s.db.QueryRowContext(ctx, query, userA, userB, models.ConversationDirect))
 }
 
-// ListUserConversations returns every conversation the user belongs to,
-// with the unread count and the last message, most recently active first.
+// ListUserConversations devolve todas as conversas de que o usuário
+// participa, com a contagem de não lidas e a última mensagem, da atividade
+// mais recente para a mais antiga.
 //
-// Unread counts the messages from the other members after what this
-// member has read. The member's own messages never count: sending does not
-// move the read watermark, so last_sequence - last_read would show a badge
-// for messages the user wrote themselves.
+// As não lidas contam as mensagens dos outros membros depois do que este
+// membro já leu. As mensagens do próprio membro nunca contam: enviar não
+// move a marca de leitura, então last_sequence - last_read mostraria um
+// contador para mensagens que o próprio usuário escreveu.
 //
-// "Most recently active" means the time of the last message, falling back
-// to the creation time for a conversation without messages. Ordering by
-// last_sequence instead would rank conversations by how many messages
-// they have, not by when they were last used. Every timestamp is written
-// in UTC by the same driver, so comparing them as text is chronological.
+// "Atividade mais recente" é o horário da última mensagem, ou o horário de
+// criação numa conversa sem mensagens. Ordenar por last_sequence
+// classificaria as conversas pela quantidade de mensagens, não pelo último
+// uso. Todo horário é gravado em UTC pelo mesmo driver, então compará-los
+// como texto segue a ordem cronológica.
 func (s *Store) ListUserConversations(ctx context.Context, userID int64) ([]models.Conversation, error) {
 	const query = `
 		SELECT
@@ -157,8 +158,8 @@ func (s *Store) ListUserConversations(ctx context.Context, userID int64) ([]mode
 		var conv models.Conversation
 		var name sql.NullString
 
-		// The last-message columns are NULL for an empty conversation
-		// because of the LEFT JOIN, hence the nullable destinations.
+		// As colunas da última mensagem são NULL numa conversa vazia por
+		// causa do LEFT JOIN, daí os destinos anuláveis.
 		var (
 			lastID, lastSequence, lastSender sql.NullInt64
 			lastClientID, lastBody           sql.NullString
@@ -194,8 +195,8 @@ func (s *Store) ListUserConversations(ctx context.Context, userID int64) ([]mode
 	return conversations, nil
 }
 
-// scanConversation maps one conversation row, tolerating the NULL name of
-// a direct conversation and translating sql.ErrNoRows into ErrNotFound.
+// scanConversation lê uma linha de conversa, tolerando o name NULL de uma
+// conversa individual e convertendo sql.ErrNoRows em ErrNotFound.
 func scanConversation(row rowScanner) (models.Conversation, error) {
 	var conv models.Conversation
 	var name sql.NullString
@@ -213,8 +214,9 @@ func scanConversation(row rowScanner) (models.Conversation, error) {
 	return conv, nil
 }
 
-// ListMembers returns the members of a conversation with the display
-// fields the client needs, ordered by username for a stable list.
+// ListMembers devolve os membros de uma conversa com os campos de exibição
+// de que o cliente precisa, ordenados por username para a lista ser
+// estável.
 func (s *Store) ListMembers(ctx context.Context, conversationID int64) ([]models.Member, error) {
 	const query = `
 		SELECT
@@ -250,9 +252,9 @@ func (s *Store) ListMembers(ctx context.Context, conversationID int64) ([]models
 	return members, nil
 }
 
-// IsMember reports whether the user belongs to the conversation. Every
-// message and membership check funnels through this, so authorisation
-// has exactly one implementation.
+// IsMember informa se o usuário participa da conversa. Toda checagem de
+// mensagem e de participação passa por aqui, então a autorização tem uma
+// única implementação.
 func (s *Store) IsMember(ctx context.Context, conversationID, userID int64) (bool, error) {
 	const query = `
 		SELECT EXISTS (
@@ -268,8 +270,8 @@ func (s *Store) IsMember(ctx context.Context, conversationID, userID int64) (boo
 	return exists, nil
 }
 
-// GetMemberRole returns the user's role in the conversation, or
-// ErrNotFound when they are not a member.
+// GetMemberRole devolve o papel do usuário na conversa, ou ErrNotFound
+// quando ele não é membro.
 func (s *Store) GetMemberRole(ctx context.Context, conversationID, userID int64) (string, error) {
 	const query = `
 		SELECT role FROM conversation_members
@@ -287,11 +289,11 @@ func (s *Store) GetMemberRole(ctx context.Context, conversationID, userID int64)
 	return role, nil
 }
 
-// AddMembers adds users to a conversation, ignoring the ones already
-// there so a repeated request is not an error.
+// AddMembers adiciona usuários a uma conversa, ignorando os que já estão
+// nela, para que uma requisição repetida não seja erro.
 //
-// ON CONFLICT DO NOTHING leans on the (conversation_id, user_id) primary
-// key instead of pre-checking each user, which would race.
+// ON CONFLICT DO NOTHING se apoia na chave primária (conversation_id,
+// user_id) em vez de checar cada usuário antes, o que geraria corrida.
 func (s *Store) AddMembers(ctx context.Context, conversationID int64, userIDs []int64) error {
 	if len(userIDs) == 0 {
 		return nil
@@ -319,10 +321,10 @@ func (s *Store) AddMembers(ctx context.Context, conversationID int64, userIDs []
 	})
 }
 
-// RemoveMember removes a user from a conversation.
+// RemoveMember remove um usuário de uma conversa.
 //
-// Removing someone who is not a member is reported as ErrNotFound so the
-// handler can answer 404 rather than pretending it worked.
+// Remover quem não é membro é informado como ErrNotFound, para que o
+// handler responda 404 em vez de fingir que funcionou.
 func (s *Store) RemoveMember(ctx context.Context, conversationID, userID int64) error {
 	const query = `
 		DELETE FROM conversation_members
@@ -344,8 +346,8 @@ func (s *Store) RemoveMember(ctx context.Context, conversationID, userID int64) 
 	return nil
 }
 
-// ListContacts returns every user who shares at least one conversation
-// with the given user. This is the audience for presence updates.
+// ListContacts devolve todos os usuários que compartilham ao menos uma
+// conversa com o usuário dado. É o público das atualizações de presença.
 func (s *Store) ListContacts(ctx context.Context, userID int64) ([]int64, error) {
 	const query = `
 		SELECT DISTINCT other.user_id

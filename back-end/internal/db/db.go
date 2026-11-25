@@ -6,18 +6,17 @@ import (
 	"fmt"
 	"net/url"
 
-	_ "modernc.org/sqlite" // registers the "sqlite" driver
+	_ "modernc.org/sqlite" // registra o driver "sqlite"
 )
 
-// Open opens the SQLite database at path and configures it for the
-// access pattern of this server: many concurrent readers and a few
-// writers.
+// Open abre o banco SQLite em path e o configura para o padrão de acesso
+// deste servidor: muitos leitores simultâneos e poucos escritores.
 //
-// The pragmas matter more than they look. SQLite defaults to a rollback
-// journal and to foreign keys being off, which would both surprise a
-// reader coming from another database: WAL lets readers proceed while a
-// writer holds the lock, and foreign_keys=ON is what actually enforces
-// the REFERENCES clauses in the schema.
+// Os pragmas importam mais do que parecem. Por padrão o SQLite usa
+// journal de rollback e deixa as chaves estrangeiras desligadas, o que
+// surpreenderia quem vem de outro banco: o WAL deixa os leitores seguirem
+// enquanto um escritor segura a trava, e foreign_keys=ON é o que de fato
+// faz valer as cláusulas REFERENCES do schema.
 func Open(ctx context.Context, path string) (*sql.DB, error) {
 	dsn := buildDSN(path)
 
@@ -26,14 +25,14 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
 
-	// SQLite serialises writes, so a large pool only produces lock
-	// contention and busy errors. A handful of connections keeps reads
-	// concurrent without letting writers pile up.
+	// O SQLite serializa as escritas, então um pool grande só gera
+	// disputa por trava e erros de banco ocupado. Poucas conexões mantêm as
+	// leituras simultâneas sem deixar os escritores se acumularem.
 	handle.SetMaxOpenConns(4)
 	handle.SetMaxIdleConns(4)
 
-	// Ping verifies the file is actually reachable now, rather than
-	// letting the first query fail later at an unrelated call site.
+	// Ping confere que o arquivo está acessível agora, em vez de deixar a
+	// primeira consulta falhar depois num ponto sem relação.
 	if err := handle.PingContext(ctx); err != nil {
 		handle.Close()
 		return nil, fmt.Errorf("ping sqlite database: %w", err)
@@ -42,11 +41,10 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	return handle, nil
 }
 
-// buildDSN assembles the connection string with the pragmas applied to
-// every new connection in the pool. Setting them in the DSN rather than
-// issuing PRAGMA statements after opening is deliberate: pragmas are
-// per-connection, so a statement would only configure whichever
-// connection happened to be checked out at the time.
+// buildDSN monta a string de conexão com os pragmas aplicados a cada nova
+// conexão do pool. Defini-los no DSN, e não com comandos PRAGMA depois de
+// abrir, é proposital: pragmas valem por conexão, então um comando só
+// configuraria a conexão que estivesse em uso naquele momento.
 func buildDSN(path string) string {
 	pragmas := url.Values{}
 	pragmas.Add("_pragma", "journal_mode(WAL)")

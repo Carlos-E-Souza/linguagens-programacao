@@ -10,25 +10,26 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/httputil"
 )
 
-// statusRecorder wraps http.ResponseWriter to remember the status code.
+// statusRecorder envolve http.ResponseWriter para lembrar o código de
+// status.
 //
-// http.ResponseWriter does not expose the status it was given, so a
-// logging middleware cannot know whether a request ended in 200 or 500
-// without intercepting WriteHeader itself. Embedding the interface
-// means every other method is forwarded unchanged.
+// http.ResponseWriter não expõe o status recebido, então um middleware de
+// log não consegue saber se uma requisição terminou em 200 ou 500 sem
+// interceptar o próprio WriteHeader. Embutir a interface faz todos os
+// outros métodos serem repassados sem mudança.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
 
-// WriteHeader records the status and forwards it to the real writer.
+// WriteHeader registra o status e o repassa ao writer real.
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
 }
 
-// Write covers handlers that never call WriteHeader explicitly: Go then
-// implies 200 on the first write.
+// Write cobre handlers que nunca chamam WriteHeader explicitamente: nesse
+// caso o Go assume 200 na primeira escrita.
 func (r *statusRecorder) Write(b []byte) (int, error) {
 	if r.status == 0 {
 		r.status = http.StatusOK
@@ -36,13 +37,13 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
-// Hijack forwards the connection takeover a WebSocket upgrade needs.
+// Hijack repassa a tomada da conexão de que um upgrade WebSocket precisa.
 //
-// Embedding http.ResponseWriter is not enough on its own: the embedded
-// value is the *interface*, which does not advertise Hijack, so
-// websocket.Accept would find no http.Hijacker and fail with 501.
-// Forwarding explicitly keeps the upgrade working while still recording
-// the status for ordinary requests.
+// Embutir http.ResponseWriter não basta sozinho: o valor embutido é a
+// *interface*, que não anuncia Hijack, então websocket.Accept não
+// encontraria um http.Hijacker e falharia com 501. Repassar
+// explicitamente mantém o upgrade funcionando e ainda registra o status
+// das requisições comuns.
 func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := r.ResponseWriter.(http.Hijacker)
 	if !ok {
@@ -51,16 +52,16 @@ func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return hijacker.Hijack()
 }
 
-// Flush forwards streaming flushes, for the same reason as Hijack.
+// Flush repassa os flushes de streaming, pelo mesmo motivo de Hijack.
 func (r *statusRecorder) Flush() {
 	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
 }
 
-// Logging records one line per request with method, path, status and
-// duration. Duration is the first thing to look at when something feels
-// slow, so it is measured here rather than left to guesswork.
+// Logging registra uma linha por requisição com método, caminho, status e
+// duração. A duração é a primeira coisa a olhar quando algo parece lento,
+// então é medida aqui em vez de ficar no palpite.
 func Logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -68,7 +69,7 @@ func Logging(next http.Handler) http.Handler {
 
 		next.ServeHTTP(rec, r)
 
-		// A handler that wrote nothing at all still completed as 200.
+		// Um handler que não escreveu nada ainda assim terminou com 200.
 		if rec.status == 0 {
 			rec.status = http.StatusOK
 		}
@@ -82,14 +83,14 @@ func Logging(next http.Handler) http.Handler {
 	})
 }
 
-// Recover turns a panic in a handler into a 500 response instead of a
-// dropped connection and a crashed process.
+// Recover transforma um panic num handler numa resposta 500 em vez de uma
+// conexão derrubada e um processo encerrado.
 //
-// The recovery has to happen in a deferred function: recover() only
-// stops a panic when called directly from a deferred call on the
-// panicking goroutine. A panic in a different goroutine cannot be
-// caught here, which is why the hub and the persistence workers recover
-// on their own.
+// A recuperação precisa acontecer numa função adiada (defer): recover()
+// só interrompe um panic quando chamado diretamente de uma chamada adiada
+// na goroutine que entrou em panic. Um panic em outra goroutine não pode
+// ser capturado aqui, e por isso o hub e os workers de persistência fazem
+// a própria recuperação.
 func Recover(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

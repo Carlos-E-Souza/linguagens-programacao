@@ -11,14 +11,14 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// userResult is a user as returned by search, with the presence flag the
-// client needs to render an online indicator.
+// userResult é um usuário como devolvido pela busca, com o indicador de
+// presença de que o cliente precisa para mostrar quem está online.
 type userResult struct {
 	models.User
 	Online bool `json:"online"`
 }
 
-// handleSearchUsers answers GET /api/users?search=<term>.
+// handleSearchUsers responde GET /api/users?search=<termo>.
 func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.currentUser(w, r)
 	if !ok {
@@ -42,12 +42,12 @@ func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, results)
 }
 
-// handleListConversations answers GET /api/conversations.
+// handleListConversations responde GET /api/conversations.
 //
-// Members are fetched per conversation so the client can render groups
-// without a second round trip. That is N+1 queries, which is acceptable
-// here because a user belongs to a bounded number of conversations; if
-// that changes, this is the first place to batch.
+// Os membros são buscados por conversa para que o cliente mostre os
+// grupos sem uma segunda ida ao servidor. São N+1 consultas, o que é
+// aceitável aqui porque um usuário participa de um número limitado de
+// conversas; se isso mudar, este é o primeiro lugar a agrupar em lote.
 func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.currentUser(w, r)
 	if !ok {
@@ -77,18 +77,18 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 	WriteJSON(w, http.StatusOK, conversations)
 }
 
-// createConversationRequest is the body of POST /api/conversations.
+// createConversationRequest é o corpo de POST /api/conversations.
 type createConversationRequest struct {
 	Type    string  `json:"type"`
 	Name    string  `json:"name"`
 	Members []int64 `json:"members"`
 }
 
-// handleCreateConversation answers POST /api/conversations.
+// handleCreateConversation responde POST /api/conversations.
 //
-// A direct conversation is idempotent: asking twice returns the existing
-// one with 200 instead of creating a duplicate, which is what makes a
-// double click harmless.
+// Uma conversa individual é idempotente: pedir duas vezes devolve a
+// existente com 200 em vez de criar uma duplicata, o que torna um clique
+// duplo inofensivo.
 func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.currentUser(w, r)
 	if !ok {
@@ -112,7 +112,7 @@ func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// createDirectConversation handles a 1:1 conversation request.
+// createDirectConversation trata o pedido de uma conversa 1:1.
 func (s *Server) createDirectConversation(w http.ResponseWriter, r *http.Request, userID int64, req createConversationRequest) {
 	if len(req.Members) != 1 {
 		WriteError(w, http.StatusBadRequest, "invalid_members",
@@ -127,7 +127,7 @@ func (s *Server) createDirectConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Reuse the existing conversation when there is one.
+	// Reaproveita a conversa existente quando houver uma.
 	existing, err := s.store.GetDirectConversation(r.Context(), userID, otherID)
 	if err == nil {
 		s.respondWithConversation(w, r, existing, http.StatusOK)
@@ -158,7 +158,7 @@ func (s *Server) createDirectConversation(w http.ResponseWriter, r *http.Request
 	s.respondWithConversation(w, r, conv, http.StatusCreated)
 }
 
-// createGroupConversation handles a group creation request.
+// createGroupConversation trata o pedido de criação de um grupo.
 func (s *Server) createGroupConversation(w http.ResponseWriter, r *http.Request, userID int64, req createConversationRequest) {
 	name := req.Name
 	if name == "" {
@@ -166,8 +166,8 @@ func (s *Server) createGroupConversation(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	// The creator is always a member and always the admin, regardless of
-	// what the request body says.
+	// Quem cria é sempre membro e sempre admin, independentemente do que
+	// diz o corpo da requisição.
 	memberIDs := []int64{userID}
 	seen := map[int64]bool{userID: true}
 	for _, id := range req.Members {
@@ -199,7 +199,7 @@ func (s *Server) createGroupConversation(w http.ResponseWriter, r *http.Request,
 	s.respondWithConversation(w, r, conv, http.StatusCreated)
 }
 
-// respondWithConversation loads the members and writes the conversation.
+// respondWithConversation carrega os membros e escreve a conversa.
 func (s *Server) respondWithConversation(w http.ResponseWriter, r *http.Request, conv models.Conversation, status int) {
 	members, err := s.store.ListMembers(r.Context(), conv.ID)
 	if err != nil {
@@ -215,12 +215,12 @@ func (s *Server) respondWithConversation(w http.ResponseWriter, r *http.Request,
 	WriteJSON(w, status, conv)
 }
 
-// addMembersRequest is the body of POST /api/conversations/{id}/members.
+// addMembersRequest é o corpo de POST /api/conversations/{id}/members.
 type addMembersRequest struct {
 	Members []int64 `json:"members"`
 }
 
-// handleAddMembers answers POST /api/conversations/{id}/members.
+// handleAddMembers responde POST /api/conversations/{id}/members.
 func (s *Server) handleAddMembers(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.currentUser(w, r)
 	if !ok {
@@ -262,12 +262,12 @@ func (s *Server) handleAddMembers(w http.ResponseWriter, r *http.Request) {
 	s.respondWithConversation(w, r, conv, http.StatusOK)
 }
 
-// handleRemoveMember answers DELETE /api/conversations/{id}/members/{userId}.
+// handleRemoveMember responde DELETE /api/conversations/{id}/members/{userId}.
 //
-// A user may always remove themselves; removing somebody else requires
-// the admin role. Only groups have removable members: leaving a direct
-// conversation would orphan it, and the next POST /api/conversations for
-// the same pair would create a second one.
+// Um usuário sempre pode remover a si mesmo; remover outra pessoa exige o
+// papel de admin. Só grupos têm membros removíveis: sair de uma conversa
+// individual a deixaria órfã, e o próximo POST /api/conversations para o
+// mesmo par criaria uma segunda.
 func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.currentUser(w, r)
 	if !ok {
@@ -315,17 +315,18 @@ func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("member removed", "conversation_id", conv.ID, "user_id", targetID, "by", userID)
 
-	// The removed user is no longer a member, so they are named explicitly:
-	// without it they would never learn the conversation is gone for them.
+	// O usuário removido não é mais membro, então é indicado explicitamente:
+	// sem isso ele nunca saberia que a conversa sumiu para ele.
 	s.notifyConversation(r, conv.ID, targetID)
 
 	WriteJSON(w, http.StatusOK, map[string]any{"conversation_id": conv.ID, "user_id": targetID})
 }
 
-// handleListMessages answers GET /api/conversations/{id}/messages.
+// handleListMessages responde GET /api/conversations/{id}/messages.
 //
-// The response is always in ascending sequence order, which is the order
-// a chat view renders, regardless of the DESC walk the query performs.
+// A resposta vem sempre em ordem crescente de sequence, que é a ordem em
+// que a tela de chat desenha, independentemente da leitura DESC feita
+// pela consulta.
 func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	userID, ok := s.currentUser(w, r)
 	if !ok {
@@ -365,12 +366,12 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, messages)
 }
 
-// requireMembership resolves the {id} path value and verifies the caller
-// belongs to that conversation.
+// requireMembership resolve o valor {id} do caminho e confere que quem
+// chama participa daquela conversa.
 //
-// Both failures write their own response, so callers only need to check
-// the boolean. Answering 404 instead of 403 for a non-member avoids
-// revealing that the conversation exists.
+// As duas falhas escrevem a própria resposta, então quem chama só precisa
+// checar o booleano. Responder 404 em vez de 403 para quem não é membro
+// evita revelar que a conversa existe.
 func (s *Server) requireMembership(w http.ResponseWriter, r *http.Request, userID int64) (models.Conversation, bool) {
 	convID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil || convID <= 0 {
@@ -403,7 +404,7 @@ func (s *Server) requireMembership(w http.ResponseWriter, r *http.Request, userI
 	return conv, true
 }
 
-// queryInt reads an optional integer query parameter.
+// queryInt lê um parâmetro de query inteiro opcional.
 func queryInt(r *http.Request, name string, fallback int) (int, error) {
 	raw := r.URL.Query().Get(name)
 	if raw == "" {
@@ -416,7 +417,7 @@ func queryInt(r *http.Request, name string, fallback int) (int, error) {
 	return value, nil
 }
 
-// queryInt64 reads an optional 64-bit integer query parameter.
+// queryInt64 lê um parâmetro de query inteiro de 64 bits opcional.
 func queryInt64(r *http.Request, name string, fallback int64) (int64, error) {
 	raw := r.URL.Query().Get(name)
 	if raw == "" {
@@ -429,15 +430,15 @@ func queryInt64(r *http.Request, name string, fallback int64) (int64, error) {
 	return value, nil
 }
 
-// notifyConversation tells the hub that a conversation's membership
-// changed, so the connected members refresh their member list.
+// notifyConversation avisa o hub que a participação numa conversa mudou,
+// para que os membros conectados atualizem a lista de membros.
 //
-// This is deliberately best-effort: the REST call has already succeeded
-// and its result is valid whether or not any client happens to be
-// connected, so a missing hub must not turn the request into an error.
+// É melhor esforço de propósito: a chamada REST já deu certo e seu
+// resultado é válido haja ou não algum cliente conectado, então a falta
+// do hub não pode transformar a requisição em erro.
 //
-// formerMembers are users who must also receive the update although they
-// are no longer members, such as the user who was just removed.
+// formerMembers são usuários que também precisam receber a atualização
+// embora não sejam mais membros, como quem acabou de ser removido.
 func (s *Server) notifyConversation(r *http.Request, conversationID int64, formerMembers ...int64) {
 	if s.hub == nil {
 		return

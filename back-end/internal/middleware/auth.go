@@ -9,31 +9,32 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/httputil"
 )
 
-// contextKey is an unexported type for context keys set by this package.
+// contextKey é um tipo não exportado para as chaves de contexto definidas
+// por este pacote.
 //
-// Using a string key would risk colliding with a key set by another
-// package or by a dependency, silently overwriting the user ID. An
-// unexported type cannot be constructed outside this package, so the
-// collision is impossible by construction.
+// Uma chave string correria o risco de colidir com uma chave definida por
+// outro pacote ou por uma dependência, sobrescrevendo em silêncio o ID do
+// usuário. Um tipo não exportado não pode ser construído fora deste
+// pacote, então a colisão é impossível por construção.
 type contextKey struct{}
 
-// userIDKey is the context key under which the authenticated user ID is
-// stored.
+// userIDKey é a chave de contexto sob a qual o ID do usuário autenticado
+// fica guardado.
 var userIDKey = contextKey{}
 
-// TokenValidator is the part of auth.TokenIssuer this middleware needs.
-// Depending on a narrow interface rather than the concrete type keeps the
-// middleware testable without generating real tokens.
+// TokenValidator é a parte de auth.TokenIssuer de que este middleware
+// precisa. Depender de uma interface estreita em vez do tipo concreto
+// mantém o middleware testável sem gerar tokens reais.
 type TokenValidator interface {
 	ValidateToken(raw string) (int64, error)
 }
 
-// Authenticate rejects requests without a valid bearer token and stores
-// the authenticated user ID in the request context.
+// Authenticate rejeita requisições sem um bearer token válido e guarda o
+// ID do usuário autenticado no contexto da requisição.
 //
-// The 401 response is deliberately vague: distinguishing "no token" from
-// "expired token" from "unknown user" would tell an attacker which part
-// of their guess was close.
+// A resposta 401 é vaga de propósito: distinguir "sem token" de "token
+// expirado" de "usuário desconhecido" diria a um atacante qual parte do
+// palpite chegou perto.
 func Authenticate(validator TokenValidator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -60,11 +61,11 @@ func Authenticate(validator TokenValidator) func(http.Handler) http.Handler {
 	}
 }
 
-// UserFromContext returns the authenticated user ID.
+// UserFromContext devolve o ID do usuário autenticado.
 //
-// The second return value is false when the handler was reached without
-// passing through Authenticate, which is a routing bug rather than a
-// client error; handlers answer 401 if they see it.
+// O segundo valor é false quando o handler foi alcançado sem passar por
+// Authenticate, o que é um bug de roteamento e não um erro do cliente; os
+// handlers respondem 401 se o virem.
 func UserFromContext(ctx context.Context) (int64, bool) {
 	userID, ok := ctx.Value(userIDKey).(int64)
 	return userID, ok

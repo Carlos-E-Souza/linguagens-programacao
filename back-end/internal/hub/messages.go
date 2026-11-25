@@ -13,12 +13,11 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// handleIncoming dispatches one frame from one client.
+// handleIncoming despacha um frame de um cliente.
 //
-// This runs on the hub goroutine, so it must not block: the only
-// operations allowed here are map lookups, sequence assignment and
-// channel sends. Anything touching the database or the network happens
-// in a separate goroutine.
+// Roda na goroutine do hub, então não pode bloquear: as únicas operações
+// permitidas aqui são buscas em mapa, atribuição de sequence e envios por
+// canal. Tudo o que envolve banco ou rede acontece em outra goroutine.
 func (h *Hub) handleIncoming(ctx context.Context, in inbound) {
 	switch in.env.Type {
 	case ws.TypeMessageSend:
@@ -34,8 +33,8 @@ func (h *Hub) handleIncoming(ctx context.Context, in inbound) {
 	}
 }
 
-// handleMessageSend validates, assigns a sequence, acknowledges and fans
-// the message out to the members of the conversation.
+// handleMessageSend valida, atribui uma sequence, confirma e distribui a
+// mensagem aos membros da conversa.
 func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 	var payload ws.SendPayload
 	if err := json.Unmarshal(in.env.Data, &payload); err != nil {
@@ -65,9 +64,9 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 		return
 	}
 
-	// Deduplication: a client that did not receive its acknowledgement
-	// resends the same client_id, and must get the same answer instead of
-	// a second copy of the message.
+	// Deduplicação: um cliente que não recebeu o ACK reenvia o mesmo
+	// client_id e precisa receber a mesma resposta em vez de uma segunda
+	// cópia da mensagem.
 	key := ackKey{senderID: senderID, clientID: payload.ClientID}
 	if previous, ok := h.acks[key]; ok {
 		frame, err := encodeFrame(mustEnvelope(ws.TypeMessageAck, previous))
@@ -84,15 +83,15 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 	}
 
 	if _, isMember := members[senderID]; !isMember {
-		// Answering as if the conversation were missing avoids revealing
-		// that it exists to somebody outside it.
+		// Responder como se a conversa não existisse evita revelar a
+		// existência dela a alguém de fora.
 		h.sendError(in.client, "not_a_member", "you are not a member of this conversation", payload.ClientID)
 		return
 	}
 
-	// Run is the only writer, so incrementing the counter here cannot
-	// race. On the first message of a conversation the value is primed
-	// from the database.
+	// Run é o único escritor, então incrementar o contador aqui não gera
+	// corrida. Na primeira mensagem de uma conversa o valor é inicializado
+	// a partir do banco.
 	sequence, err := h.nextSequence(ctx, payload.ConversationID)
 	if err != nil {
 		h.sendError(in.client, "internal_error", "could not assign a sequence", payload.ClientID)
@@ -116,21 +115,21 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 		CreatedAt:      now.Format(time.RFC3339Nano),
 	}
 
-	// The real message ID is assigned by the database, so the message goes
-	// to the persistence pool and a goroutine waits for the stored row.
-	// Until the pool answers, the message is kept in unsaved so that a
-	// sync arriving in that window still finds it.
+	// O ID real da mensagem é atribuído pelo banco, então a mensagem vai
+	// para o pool de persistência e uma goroutine espera a linha gravada.
+	// Até o pool responder, a mensagem fica em unsaved para que um sync
+	// que chegue nessa janela ainda a encontre.
 	var result <-chan models.Message
 	if h.persister != nil {
 		var err error
 		result, err = h.persister.Enqueue(ctx, msg)
 		if err != nil {
-			// The message was not accepted, so nothing about it may remain:
-			// a cached ACK would answer the client's retry as if it had been
-			// stored, and a consumed sequence would leave a permanent hole
-			// that clients filling gaps would never see closed. Run is the
-			// only writer and nothing ran since nextSequence, so giving the
-			// number back is safe.
+			// A mensagem não foi aceita, então nada dela pode sobrar: um
+			// ACK em cache responderia à nova tentativa do cliente como se
+			// ela tivesse sido gravada, e uma sequence consumida deixaria
+			// um buraco permanente que os clientes que preenchem lacunas
+			// nunca veriam fechado. Run é o único escritor e nada rodou
+			// desde nextSequence, então devolver o número é seguro.
 			slog.Error("enqueue failed", "conversation_id", msg.ConversationID, "error", err)
 			h.seqs[payload.ConversationID] = sequence - 1
 			h.sendError(in.client, "internal_error", "could not persist the message", payload.ClientID)
@@ -139,12 +138,12 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 		h.rememberUnsaved(msg)
 	}
 
-	// Only now the message is really accepted: a resend of the same
-	// client_id gets this answer instead of a second copy.
+	// Só agora a mensagem foi realmente aceita: um reenvio do mesmo
+	// client_id recebe esta resposta em vez de uma segunda cópia.
 	h.rememberAck(key, ack)
 
-	// Deliver to every member, including the sender's other connections,
-	// so a second window of the same user stays in sync.
+	// Entrega a todos os membros, incluindo as outras conexões do
+	// remetente, para que uma segunda janela do mesmo usuário fique em dia.
 	newFrame, err := encodeFrame(mustEnvelope(ws.TypeMessageNew, msg))
 	if err != nil {
 		slog.Error("encode message.new failed", "error", err)
@@ -155,25 +154,24 @@ func (h *Hub) handleMessageSend(ctx context.Context, in inbound) {
 	}
 
 	if result == nil {
-		// No persistence (tests): answer right away, without an ID.
+		// Sem persistência (testes): responde na hora, sem ID.
 		h.sendAck(in.client, ack)
 		return
 	}
 
-	// One goroutine per message owns the acknowledgement, so the hub loop
-	// never waits on disk. It must not touch hub state; everything it
-	// learns goes back to the loop through h.persisted.
+	// Uma goroutine por mensagem cuida do ACK, então o laço do hub nunca
+	// espera o disco. Ela não pode mexer no estado do hub; tudo o que
+	// descobre volta ao laço por h.persisted.
 	go h.awaitPersisted(in.client, key, ack, msg, result)
 }
 
-// awaitPersisted sends the acknowledgement once the pool has stored the
-// message, or after ackWaitTimeout without an ID, and then reports the
-// outcome to the loop.
+// awaitPersisted envia o ACK quando o pool grava a mensagem, ou depois de
+// ackWaitTimeout sem ID, e então informa o resultado ao laço.
 //
-// It always waits for the pool's answer, even after a timed-out ACK went
-// out, because the loop must learn when the message left the queue to
-// drop it from unsaved. The pool answers every message, also on failure
-// and during shutdown, so the wait ends.
+// Sempre espera a resposta do pool, mesmo depois de um ACK enviado por
+// timeout, porque o laço precisa saber quando a mensagem saiu da fila para
+// tirá-la de unsaved. O pool responde por toda mensagem, também em caso de
+// falha e durante o desligamento, então a espera termina.
 func (h *Hub) awaitPersisted(client *Client, key ackKey, ack ws.AckPayload, msg models.Message, result <-chan models.Message) {
 	timer := time.NewTimer(ackWaitTimeout)
 	defer timer.Stop()
@@ -211,11 +209,11 @@ func (h *Hub) awaitPersisted(client *Client, key ackKey, ack ws.AckPayload, msg 
 		sequence:       msg.Sequence,
 	}:
 	case <-h.done:
-		// The hub stopped; there is no state left to update.
+		// O hub parou; não resta estado a atualizar.
 	}
 }
 
-// sendAck queues a message.ack frame for one connection.
+// sendAck enfileira um frame message.ack para uma conexão.
 func (h *Hub) sendAck(client *Client, ack ws.AckPayload) {
 	frame, err := encodeFrame(mustEnvelope(ws.TypeMessageAck, ack))
 	if err != nil {
@@ -225,8 +223,8 @@ func (h *Hub) sendAck(client *Client, ack ws.AckPayload) {
 	client.trySend(frame)
 }
 
-// rememberUnsaved records a message the database has not confirmed yet.
-// Run is the only caller.
+// rememberUnsaved registra uma mensagem que o banco ainda não confirmou.
+// Run é o único chamador.
 func (h *Hub) rememberUnsaved(msg models.Message) {
 	byConv := h.unsaved[msg.ConversationID]
 	if byConv == nil {
@@ -236,9 +234,9 @@ func (h *Hub) rememberUnsaved(msg models.Message) {
 	byConv[msg.Sequence] = msg
 }
 
-// handlePersisted runs on the loop when the pool has answered for one
-// message: the message leaves unsaved, and the dedup cache learns the
-// database ID when there is one.
+// handlePersisted roda no laço quando o pool respondeu por uma mensagem: a
+// mensagem sai de unsaved, e o cache de deduplicação aprende o ID do banco
+// quando houver um.
 func (h *Hub) handlePersisted(pm persistedMsg) {
 	if byConv := h.unsaved[pm.conversationID]; byConv != nil {
 		delete(byConv, pm.sequence)
@@ -252,17 +250,17 @@ func (h *Hub) handlePersisted(pm persistedMsg) {
 	}
 }
 
-// ackWaitTimeout bounds how long the acknowledgement waits for the
-// database-assigned ID.
+// ackWaitTimeout limita quanto tempo o ACK espera pelo ID atribuído pelo
+// banco.
 //
-// The persistence pool flushes on a 200ms ticker, so this comfortably
-// covers a normal write while still guaranteeing a reply if the database
-// is slow or unavailable: the message is delivered regardless, and the
-// client learns the ID from message.new instead.
+// O pool de persistência despacha a cada 200ms, então isto cobre com folga
+// uma gravação normal e ainda garante uma resposta se o banco estiver
+// lento ou indisponível: a mensagem é entregue de qualquer forma, e o
+// cliente descobre o ID pelo message.new.
 const ackWaitTimeout = 2 * time.Second
 
-// nextSequence returns the next sequence number for a conversation,
-// priming the in-memory counter from the database on first use.
+// nextSequence devolve o próximo número de sequence de uma conversa,
+// inicializando o contador em memória a partir do banco no primeiro uso.
 func (h *Hub) nextSequence(ctx context.Context, conversationID int64) (int64, error) {
 	current, ok := h.seqs[conversationID]
 	if !ok {
@@ -283,11 +281,11 @@ func (h *Hub) nextSequence(ctx context.Context, conversationID int64) (int64, er
 	return next, nil
 }
 
-// handleReceipt processes a delivered or read confirmation.
+// handleReceipt processa uma confirmação de entrega ou de leitura.
 //
-// The status goes out to the other members right away. The watermark write
-// is handed to the receipt writer, which batches it with the other
-// confirmations of the next few milliseconds.
+// O status vai para os outros membros na hora. A gravação da marca é
+// entregue ao gravador de confirmações, que a junta em lote com as outras
+// confirmações dos milissegundos seguintes.
 func (h *Hub) handleReceipt(ctx context.Context, in inbound, status string) {
 	var payload ws.ReadReceiptPayload
 	if err := json.Unmarshal(in.env.Data, &payload); err != nil {
@@ -332,12 +330,12 @@ func (h *Hub) handleReceipt(ctx context.Context, in inbound, status string) {
 	}
 }
 
-// queueReceipt hands a confirmation to the receipt writer without
-// blocking the loop.
+// queueReceipt entrega uma confirmação ao gravador de confirmações sem
+// bloquear o laço.
 //
-// When the queue is full the write is skipped and logged. That loses
-// nothing for good: watermarks are cumulative, so the member's next
-// confirmation carries this one with it.
+// Quando a fila está cheia, a gravação é pulada e registrada no log. Nada
+// se perde de vez: as marcas são cumulativas, então a próxima confirmação
+// do membro carrega esta junto.
 func (h *Hub) queueReceipt(conversationID, userID, upTo int64, status string) {
 	if h.store == nil {
 		return
@@ -358,10 +356,11 @@ func (h *Hub) queueReceipt(conversationID, userID, upTo int64, status string) {
 	}
 }
 
-// runReceiptWriter folds confirmations into one entry per (conversation,
-// member), keeping the highest delivered and read sequences, and writes
-// them in one transaction every receiptFlushEvery or when maxReceiptBatch
-// members are pending. It returns after the queue is closed and flushed.
+// runReceiptWriter junta as confirmações numa entrada por (conversa,
+// membro), mantendo as maiores sequences de entrega e de leitura, e as
+// grava numa transação a cada receiptFlushEvery ou quando há
+// maxReceiptBatch membros pendentes. Retorna depois que a fila é fechada e
+// despachada.
 func (h *Hub) runReceiptWriter() {
 	defer h.wg.Done()
 
@@ -415,12 +414,12 @@ func (h *Hub) runReceiptWriter() {
 	}
 }
 
-// maxSyncMessagesPerConversation bounds the offline backfill. A client
-// that has been away long enough to exceed this uses the REST pagination
-// instead, which keeps one frame from carrying an unbounded payload.
+// maxSyncMessagesPerConversation limita o preenchimento offline. Um
+// cliente que ficou fora tempo suficiente para passar disso usa a
+// paginação REST, o que impede um frame de carregar um payload sem limite.
 const maxSyncMessagesPerConversation = 500
 
-// handleSync sends the messages a reconnecting client missed.
+// handleSync envia as mensagens que um cliente reconectando perdeu.
 func (h *Hub) handleSync(ctx context.Context, in inbound) {
 	var payload ws.SyncPayload
 	if err := json.Unmarshal(in.env.Data, &payload); err != nil {
@@ -431,11 +430,11 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 	userID := in.client.UserID()
 	client := in.client
 
-	// Snapshot the messages the database has not confirmed yet. Taken here,
-	// on the loop, before the query below: a message that is written
-	// after the snapshot is in it, and one written before is in the
-	// database, so the merge cannot miss either. Messages accepted after
-	// the snapshot reach this connection live, since it is registered.
+	// Tira uma foto das mensagens que o banco ainda não confirmou. Ela é
+	// tirada aqui, no laço, antes da consulta abaixo: uma mensagem gravada
+	// depois da foto está nela, e uma gravada antes está no banco, então a
+	// combinação não perde nenhuma. Mensagens aceitas depois da foto chegam
+	// a esta conexão ao vivo, já que ela está registrada.
 	unsaved := make(map[int64][]models.Message, len(h.unsaved))
 	for convID, byConv := range h.unsaved {
 		for _, msg := range byConv {
@@ -443,8 +442,8 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 		}
 	}
 
-	// Building the backfill reads the database, so it runs off the hub
-	// loop; the frames are queued through the same buffered channel.
+	// Montar o preenchimento lê o banco, então roda fora do laço do hub; os
+	// frames são enfileirados pelo mesmo canal com buffer.
 	go func() {
 		syncCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -453,9 +452,9 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 			return
 		}
 
-		// Start from what the client reported, then also cover
-		// conversations it did not mention (a group created while it was
-		// offline, for instance).
+		// Parte do que o cliente informou e depois cobre também as
+		// conversas que ele não mencionou (um grupo criado enquanto estava
+		// offline, por exemplo).
 		known := make(map[int64]int64, len(payload.Conversations))
 		for _, c := range payload.Conversations {
 			known[c.ConversationID] = c.LastSequence
@@ -484,11 +483,11 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 					continue
 				}
 				if !client.trySend(frame) {
-					// The queue filled up: the client is too slow to
-					// receive the whole backfill. Stop sending, but fall
-					// through so sync.end still goes out below — without
-					// it the client would wait forever, not knowing the
-					// backfill had finished.
+					// A fila encheu: o cliente está lento demais para
+					// receber o preenchimento inteiro. Para de enviar, mas
+					// segue adiante para que o sync.end ainda seja enviado
+					// abaixo — sem ele o cliente esperaria para sempre,
+					// sem saber que o preenchimento terminou.
 					slog.Warn("sync: client queue full, truncating backfill",
 						"user_id", userID, "conversation_id", conv.ID)
 					break
@@ -507,10 +506,10 @@ func (h *Hub) handleSync(ctx context.Context, in inbound) {
 	}()
 }
 
-// mergeBackfill combines the stored messages after a sequence with the
-// unconfirmed ones, dropping duplicates (a message can be in both when it
-// was written between the snapshot and the query), in ascending sequence
-// order and capped at limit.
+// mergeBackfill combina as mensagens gravadas depois de uma sequence com
+// as não confirmadas, descartando duplicatas (uma mensagem pode estar nas
+// duas quando foi gravada entre a foto e a consulta), em ordem crescente
+// de sequence e limitado a limit.
 func mergeBackfill(stored, unsaved []models.Message, after int64, limit int) []models.Message {
 	if len(unsaved) == 0 {
 		return stored
@@ -522,7 +521,7 @@ func mergeBackfill(stored, unsaved []models.Message, after int64, limit int) []m
 			bySequence[msg.Sequence] = msg
 		}
 	}
-	// Stored rows win: they carry the database ID.
+	// As linhas gravadas prevalecem: elas trazem o ID do banco.
 	for _, msg := range stored {
 		bySequence[msg.Sequence] = msg
 	}
@@ -539,7 +538,7 @@ func mergeBackfill(stored, unsaved []models.Message, after int64, limit int) []m
 	return merged
 }
 
-// sendError reports a rejected request to the client that made it.
+// sendError informa uma requisição rejeitada ao cliente que a fez.
 func (h *Hub) sendError(client *Client, code, message, clientID string) {
 	frame, err := encodeFrame(mustEnvelope(ws.TypeError, ws.ErrorPayload{
 		Code:     code,

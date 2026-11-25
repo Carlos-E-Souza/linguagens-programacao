@@ -14,83 +14,85 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/ws"
 )
 
-// Persister accepts a message for asynchronous writing.
+// Persister aceita uma mensagem para gravação assíncrona.
 //
-// The hub depends on this narrow interface rather than on store.Pool, so
-// the two are independently testable and the hub cannot accidentally
-// block on a database call.
+// O hub depende desta interface estreita em vez de store.Pool, para que os
+// dois sejam testáveis de forma independente e o hub não possa bloquear
+// numa chamada ao banco por acidente.
 type Persister interface {
-	// Enqueue accepts a message for asynchronous writing and returns a
-	// channel that yields the stored row, with its database-assigned ID,
-	// once the batch has been committed. The channel always receives
-	// exactly one value: a zero Message when the row was not stored.
+	// Enqueue aceita uma mensagem para gravação assíncrona e devolve um
+	// canal que entrega a linha gravada, com o ID atribuído pelo banco,
+	// depois que o lote é confirmado. O canal sempre recebe exatamente um
+	// valor: uma Message zerada quando a linha não foi gravada.
 	Enqueue(ctx context.Context, msg models.Message) (<-chan models.Message, error)
 }
 
-// Hub owns every connected client and routes messages between them.
+// Hub é dono de todo cliente conectado e roteia as mensagens entre eles.
 //
-// Concurrency model, which is the heart of this package:
+// Modelo de concorrência, que é o coração deste pacote:
 //
-//   - A single goroutine (Run) mutates the hub's state. Because only that
-//     goroutine writes, the membership maps need no lock, and sequence
-//     numbers can be assigned without a race.
-//   - Other goroutines (HTTP handlers, connection writers) only read.
-//     Those reads are guarded by a sync.RWMutex, which allows many
-//     concurrent readers.
-//   - Every client has a buffered outgoing channel, so the hub never
-//     performs a socket write and never blocks on a slow peer.
+//   - Uma única goroutine (Run) altera o estado do hub. Como só ela
+//     escreve, os mapas de participação não precisam de trava, e os
+//     números de sequence podem ser atribuídos sem corrida.
+//   - As outras goroutines (handlers HTTP, escritores das conexões) só
+//     leem. Essas leituras são protegidas por um sync.RWMutex, que
+//     permite muitos leitores simultâneos.
+//   - Todo cliente tem um canal de saída com buffer, então o hub nunca
+//     escreve num socket e nunca bloqueia por causa de um par lento.
 type Hub struct {
 	cfg       config.Config
 	store     *db.Store
 	persister Persister
 
-	// clients is guarded by mu because HTTP handlers and background
-	// goroutines read it. The maps below it are owned by the Run loop
-	// alone and must never be touched from another goroutine.
+	// clients é protegido por mu porque handlers HTTP e goroutines de
+	// fundo o leem. Os mapas abaixo dele pertencem só ao laço Run e nunca
+	// podem ser tocados por outra goroutine.
 	mu      sync.RWMutex
 	clients map[int64]map[*Client]struct{}
-	members map[int64]map[int64]struct{} // conversation_id -> set of user_id
-	acks    map[ackKey]ws.AckPayload     // (sender_id, client_id) -> previous ack
-	seqs    map[int64]int64              // conversation_id -> last assigned sequence
+	members map[int64]map[int64]struct{} // conversation_id -> conjunto de user_id
+	acks    map[ackKey]ws.AckPayload     // (sender_id, client_id) -> ack anterior
+	seqs    map[int64]int64              // conversation_id -> última sequence atribuída
 
-	// unsaved holds the messages handed to the persistence pool that the
-	// database has not confirmed yet (conversation_id -> sequence ->
-	// message). A sync merges it with the database query, so a message
-	// accepted moments before a reconnect is not missing from the backfill.
+	// unsaved guarda as mensagens entregues ao pool de persistência que o
+	// banco ainda não confirmou (conversation_id -> sequence -> mensagem).
+	// Um sync o combina com a consulta ao banco, para que uma mensagem
+	// aceita instantes antes de uma reconexão não falte no preenchimento.
 	unsaved map[int64]map[int64]models.Message
 
-	// Channels into the Run loop. Only Run reads them.
+	// Canais de entrada do laço Run. Só Run os lê.
 	register   chan *Client
 	unregister chan *Client
 
-	// persisted reports that the pool finished with a message (stored or
-	// not). It lets the loop enrich the dedup cache and drop the message
-	// from unsaved without the waiting goroutine touching hub state.
+	// persisted informa que o pool terminou com uma mensagem (gravada ou
+	// não). Permite ao laço enriquecer o cache de deduplicação e tirar a
+	// mensagem de unsaved sem que a goroutine que espera mexa no estado do
+	// hub.
 	persisted chan persistedMsg
 
-	// receipts feeds the goroutine that writes delivered/read watermarks
-	// in batches. Only the loop sends on it, and shutdown closes it.
+	// receipts alimenta a goroutine que grava as marcas de entrega/leitura
+	// em lote. Só o laço envia nele, e o desligamento o fecha.
 	receipts chan db.Receipt
 
-	// drop is a buffered queue of connections the hub itself decided to
-	// disconnect (slow clients). It is separate from unregister so the
-	// loop can enqueue without ever blocking on itself, and buffered so
-	// a burst of drops never stalls delivery.
+	// drop é uma fila com buffer das conexões que o próprio hub decidiu
+	// desconectar (clientes lentos). É separada de unregister para que o
+	// laço possa enfileirar sem nunca bloquear em si mesmo, e tem buffer
+	// para que uma rajada de quedas nunca trave a entrega.
 	drop     chan *Client
 	incoming chan inbound
 	notify   chan Notification
 
-	// done is closed when Run returns, so callers that need to hand work
-	// to the loop can tell that it is gone instead of blocking forever.
+	// done é fechado quando Run retorna, para que quem precisa passar
+	// trabalho ao laço perceba que ele acabou em vez de bloquear para
+	// sempre.
 	done chan struct{}
 
-	// wg tracks the long-lived goroutines so shutdown can wait for them.
+	// wg acompanha as goroutines de longa duração para o desligamento esperá-las.
 	wg sync.WaitGroup
 }
 
-// persistedMsg tells the loop the pool has answered for one message.
-// stored is false when the row was not written (a duplicate or a failed
-// write); ack then carries no database ID.
+// persistedMsg avisa o laço que o pool respondeu por uma mensagem.
+// stored é false quando a linha não foi gravada (duplicata ou falha de
+// gravação); o ack então não traz ID do banco.
 type persistedMsg struct {
 	key            ackKey
 	ack            ws.AckPayload
@@ -99,65 +101,65 @@ type persistedMsg struct {
 	sequence       int64
 }
 
-// ackKey identifies a client-supplied message ID within a sender.
+// ackKey identifica um ID de mensagem fornecido pelo cliente dentro de um remetente.
 type ackKey struct {
 	senderID int64
 	clientID string
 }
 
-// inbound is a frame received from one client.
+// inbound é um frame recebido de um cliente.
 type inbound struct {
 	client  *Client
 	env     ws.Envelope
 	rawSize int
 }
 
-// NotificationType distinguishes the events the REST layer pushes into
-// the hub so that connected clients learn about changes made over HTTP.
+// NotificationType distingue os eventos que a camada REST envia ao hub
+// para que os clientes conectados saibam de mudanças feitas por HTTP.
 type NotificationType string
 
 const (
-	// NotifyConversationUpdated tells the members of a conversation that
-	// its membership changed.
+	// NotifyConversationUpdated avisa os membros de uma conversa que a
+	// participação nela mudou.
 	NotifyConversationUpdated NotificationType = "conversation_updated"
 )
 
-// Notification is an event raised outside the WebSocket path.
+// Notification é um evento gerado fora do caminho WebSocket.
 type Notification struct {
 	Type           NotificationType
 	ConversationID int64
-	// UserIDs are extra recipients who are no longer members, such as a
-	// user who was just removed: they still need the update to learn
-	// that the conversation is gone for them.
+	// UserIDs são destinatários extras que não são mais membros, como um
+	// usuário que acabou de ser removido: eles ainda precisam da
+	// atualização para saber que a conversa sumiu para eles.
 	UserIDs []int64
 }
 
-// shutdownGrace is how long the hub waits for the shutdown notice to
-// reach the clients before closing their connections.
+// shutdownGrace é quanto tempo o hub espera o aviso de desligamento chegar
+// aos clientes antes de fechar as conexões.
 const shutdownGrace = 100 * time.Millisecond
 
-// maxAckCacheEntries bounds the deduplication cache. A client that
-// reconnects and resends will do so quickly, so only recent entries
-// matter; the database unique index remains the real guarantee.
+// maxAckCacheEntries limita o cache de deduplicação. Um cliente que
+// reconecta e reenvia faz isso rápido, então só as entradas recentes
+// importam; o índice único do banco continua sendo a garantia real.
 const maxAckCacheEntries = 4096
 
-// Receipt batching: the writer folds confirmations for up to
-// receiptFlushEvery, or until maxReceiptBatch members are pending, into
-// one transaction.
+// Lote de confirmações: o gravador junta as confirmações por até
+// receiptFlushEvery, ou até haver maxReceiptBatch membros pendentes, numa
+// única transação.
 const (
 	receiptFlushEvery = 100 * time.Millisecond
 	maxReceiptBatch   = 256
 	receiptQueueSize  = 4096
 )
 
-// Close codes and reasons sent when the hub itself ends a connection.
+// Códigos e motivos de close enviados quando o próprio hub encerra uma conexão.
 const (
 	closeSlowReason     = "client too slow"
 	closeShutdownReason = "server shutting down"
 )
 
-// New builds a hub. The persister may be nil, in which case messages are
-// delivered but not stored (useful in tests).
+// New monta um hub. O persister pode ser nil, e nesse caso as mensagens
+// são entregues mas não gravadas (útil nos testes).
 func New(cfg config.Config, store *db.Store, persister Persister) *Hub {
 	return &Hub{
 		cfg:        cfg,
@@ -179,11 +181,11 @@ func New(cfg config.Config, store *db.Store, persister Persister) *Hub {
 	}
 }
 
-// Run is the hub's event loop. It blocks until ctx is cancelled.
+// Run é o laço de eventos do hub. Bloqueia até ctx ser cancelado.
 //
-// No handler ever touches the maps directly: everything arrives as a
-// message on one of the channels below, which serialises all mutation
-// through this single select.
+// Nenhum handler mexe nos mapas diretamente: tudo chega como mensagem em
+// um dos canais abaixo, o que serializa toda alteração por este único
+// select.
 func (h *Hub) Run(ctx context.Context) {
 	slog.Info("hub started")
 
@@ -220,7 +222,7 @@ func (h *Hub) Run(ctx context.Context) {
 	}
 }
 
-// shutdown closes every connection and waits for the goroutines.
+// shutdown fecha todas as conexões e espera as goroutines.
 func (h *Hub) shutdown() {
 	h.mu.Lock()
 	clients := make([]*Client, 0, len(h.clients))
@@ -232,18 +234,19 @@ func (h *Hub) shutdown() {
 	h.clients = make(map[int64]map[*Client]struct{})
 	h.mu.Unlock()
 
-	// Tell the clients the server is going away before their queues are
-	// closed, so the frame is actually written. Without this the client
-	// would just see the socket drop and would have to guess whether to
-	// reconnect.
+	// Avisa os clientes que o servidor está saindo antes de fechar as
+	// filas deles, para que o frame seja de fato escrito. Sem isso o
+	// cliente só veria o socket cair e teria de adivinhar se deve
+	// reconectar.
 	if frame, err := encodeFrame(ws.Envelope{Type: ws.TypeServerShutdown}); err == nil {
 		for _, c := range clients {
 			c.trySend(frame)
 		}
 
-		// Give the write goroutines a moment to flush. This is a fixed
-		// grace period rather than a wait group because a client may be
-		// slow or already gone, and shutdown must not hang on it.
+		// Dá às goroutines de escrita um instante para despachar. É um
+		// período de tolerância fixo, e não um wait group, porque um
+		// cliente pode estar lento ou já ter sumido, e o desligamento não
+		// pode travar por causa dele.
 		time.Sleep(shutdownGrace)
 	}
 
@@ -251,15 +254,15 @@ func (h *Hub) shutdown() {
 		c.closeWith(websocket.StatusGoingAway, closeShutdownReason)
 	}
 
-	// The loop is the only sender on receipts, and it has stopped, so the
-	// channel can be closed: the writer flushes what it holds and returns.
+	// O laço é o único que envia em receipts, e ele parou, então o canal
+	// pode ser fechado: o gravador despacha o que tem e retorna.
 	close(h.receipts)
 
 	h.wg.Wait()
 	slog.Info("hub stopped", "clients_notified", len(clients))
 }
 
-// Register adds a connection to the hub.
+// Register adiciona uma conexão ao hub.
 func (h *Hub) Register(client *Client) {
 	select {
 	case h.register <- client:
@@ -267,23 +270,23 @@ func (h *Hub) Register(client *Client) {
 	}
 }
 
-// Unregister removes a connection from the hub.
+// Unregister remove uma conexão do hub.
 //
-// It must not give up when the client context is already cancelled: the
-// closing connection is exactly the case this call exists to report, and
-// skipping it would leave the user marked online forever. The send
-// therefore blocks until the hub loop picks it up (it always does, since
-// the loop is running) or the hub itself stops.
+// Não pode desistir quando o contexto do cliente já foi cancelado: a
+// conexão sendo fechada é exatamente o caso que esta chamada existe para
+// informar, e pulá-la deixaria o usuário marcado como online para sempre.
+// Por isso o envio bloqueia até o laço do hub recebê-lo (o que sempre
+// acontece, já que o laço está rodando) ou até o próprio hub parar.
 func (h *Hub) Unregister(client *Client) {
 	select {
 	case h.unregister <- client:
 	case <-h.done:
-		// The hub is shutting down and will close every connection
-		// itself, so there is nothing left to report.
+		// O hub está desligando e vai fechar todas as conexões ele mesmo,
+		// então não resta nada a informar.
 	}
 }
 
-// Notify pushes an external event into the hub loop.
+// Notify envia um evento externo ao laço do hub.
 func (h *Hub) Notify(ctx context.Context, n Notification) {
 	select {
 	case h.notify <- n:
@@ -291,8 +294,8 @@ func (h *Hub) Notify(ctx context.Context, n Notification) {
 	}
 }
 
-// IsOnline reports whether a user has at least one connection. It is
-// called from HTTP handlers, hence the read lock.
+// IsOnline informa se um usuário tem ao menos uma conexão. É chamado pelos
+// handlers HTTP, daí a trava de leitura.
 func (h *Hub) IsOnline(userID int64) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -300,7 +303,7 @@ func (h *Hub) IsOnline(userID int64) bool {
 	return len(h.clients[userID]) > 0
 }
 
-// OnlineUsers returns every connected user ID.
+// OnlineUsers devolve o ID de todo usuário conectado.
 func (h *Hub) OnlineUsers() []int64 {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -312,7 +315,7 @@ func (h *Hub) OnlineUsers() []int64 {
 	return users
 }
 
-// submit queues a frame received from a client into the hub loop.
+// submit enfileira no laço do hub um frame recebido de um cliente.
 func (h *Hub) submit(ctx context.Context, client *Client, env ws.Envelope, rawSize int) error {
 	select {
 	case h.incoming <- inbound{client: client, env: env, rawSize: rawSize}:
@@ -322,14 +325,14 @@ func (h *Hub) submit(ctx context.Context, client *Client, env ws.Envelope, rawSi
 	}
 }
 
-// handleRegister records the connection and announces presence when it is
-// the user's first one.
+// handleRegister registra a conexão e anuncia a presença quando ela é a
+// primeira do usuário.
 func (h *Hub) handleRegister(client *Client) {
 	userID := client.UserID()
 
-	// The write lock is required even though this runs on the hub
-	// goroutine: IsOnline and OnlineUsers read the same map from HTTP
-	// handlers, and the race detector flags the unsynchronised write.
+	// A trava de escrita é necessária mesmo rodando na goroutine do hub:
+	// IsOnline e OnlineUsers leem o mesmo mapa a partir dos handlers HTTP,
+	// e o detector de corrida acusa a escrita sem sincronização.
 	h.mu.Lock()
 	if h.clients[userID] == nil {
 		h.clients[userID] = make(map[*Client]struct{})
@@ -344,13 +347,13 @@ func (h *Hub) handleRegister(client *Client) {
 
 	slog.Info("user online", "user_id", userID)
 
-	// A second connection is not a new presence event, so only the first
-	// one is broadcast.
+	// Uma segunda conexão não é um novo evento de presença, então só a
+	// primeira é anunciada.
 	go h.broadcastPresence(userID, true)
 }
 
-// handleUnregister drops the connection and announces presence when it
-// was the user's last one.
+// handleUnregister remove a conexão e anuncia a presença quando ela era a
+// última do usuário.
 func (h *Hub) handleUnregister(client *Client) {
 	userID := client.UserID()
 
@@ -383,8 +386,8 @@ func (h *Hub) handleUnregister(client *Client) {
 	go h.broadcastPresence(userID, false)
 }
 
-// broadcastPresence tells a user's contacts that they came online or went
-// offline. It runs off the hub loop because it touches the database.
+// broadcastPresence avisa os contatos de um usuário que ele entrou ou
+// saiu. Roda fora do laço do hub porque consulta o banco.
 func (h *Hub) broadcastPresence(userID int64, online bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -407,26 +410,27 @@ func (h *Hub) broadcastPresence(userID int64, online bool) {
 	}
 }
 
-// handleNotification reacts to changes made through the REST API.
+// handleNotification reage a mudanças feitas pela API REST.
 func (h *Hub) handleNotification(n Notification) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	switch n.Type {
 	case NotifyConversationUpdated:
-		// The member cache must be dropped so the next message uses the
-		// current membership rather than a stale snapshot.
+		// O cache de membros precisa ser descartado para que a próxima
+		// mensagem use a participação atual em vez de uma foto antiga.
 		delete(h.members, n.ConversationID)
 		h.broadcastConversationUpdated(ctx, n.ConversationID, n.UserIDs)
 	}
 }
 
-// broadcastConversationUpdated reloads a conversation and sends it to its
-// members, plus any extra recipients, so their client can refresh it.
+// broadcastConversationUpdated recarrega uma conversa e a envia aos
+// membros, mais os destinatários extras, para que o cliente deles a
+// atualize.
 //
-// An extra recipient is a user who is no longer a member: the update they
-// receive lists the members without them, which is how their client learns
-// it was removed.
+// Um destinatário extra é um usuário que não é mais membro: a atualização
+// que ele recebe lista os membros sem ele, e é assim que o cliente dele
+// descobre que foi removido.
 func (h *Hub) broadcastConversationUpdated(ctx context.Context, conversationID int64, extra []int64) {
 	conv, err := h.store.GetConversation(ctx, conversationID)
 	if err != nil {
@@ -460,8 +464,9 @@ func (h *Hub) broadcastConversationUpdated(ctx context.Context, conversationID i
 	}
 }
 
-// mustEnvelope builds an envelope, panicking only on a programming error:
-// these payloads are plain structs that cannot fail to marshal.
+// mustEnvelope monta um envelope e só entra em panic por erro de
+// programação: estes payloads são structs simples que não falham ao
+// serializar.
 func mustEnvelope(msgType string, payload any) ws.Envelope {
 	env, err := ws.NewEnvelope(msgType, payload)
 	if err != nil {
@@ -470,10 +475,10 @@ func mustEnvelope(msgType string, payload any) ws.Envelope {
 	return env
 }
 
-// deliverToUser queues a frame to every connection of one user.
+// deliverToUser enfileira um frame em todas as conexões de um usuário.
 //
-// It takes the read lock because it is called both from the hub loop and
-// from background goroutines (presence broadcasts).
+// Usa a trava de leitura porque é chamado tanto pelo laço do hub quanto
+// por goroutines de fundo (anúncios de presença).
 func (h *Hub) deliverToUser(userID int64, frame []byte) {
 	h.mu.RLock()
 	targets := make([]*Client, 0, len(h.clients[userID]))
@@ -487,29 +492,29 @@ func (h *Hub) deliverToUser(userID int64, frame []byte) {
 			continue
 		}
 
-		// The queue is full: this client is too slow. Disconnecting it
-		// protects the other members from waiting on it.
+		// A fila está cheia: este cliente está lento demais. Desconectá-lo
+		// protege os outros membros de esperar por ele.
 		slog.Warn("dropping slow client", "user_id", c.UserID())
 
-		// The removal must go through the hub loop, not be done here:
-		// this function runs on the loop goroutine for some callers and
-		// on a background goroutine for others, so touching the map
-		// directly would race. Closing first unblocks the write
-		// goroutine, which then triggers the normal unregister path.
+		// A remoção precisa passar pelo laço do hub, não ser feita aqui:
+		// esta função roda na goroutine do laço para alguns chamadores e
+		// numa goroutine de fundo para outros, então mexer no mapa
+		// diretamente geraria corrida. Fechar primeiro desbloqueia a
+		// goroutine de escrita, que então dispara o caminho normal de
+		// unregister.
 		c.closeWith(websocket.StatusPolicyViolation, closeSlowReason)
 		h.dropClient(c)
 	}
 }
 
-// dropClient queues a client that the hub itself decided to disconnect.
+// dropClient enfileira um cliente que o próprio hub decidiu desconectar.
 //
-// The removal has to happen on the loop goroutine, because deliverToUser
-// is also called from background goroutines (presence broadcasts) where
-// touching the membership map would race. The send is non-blocking on a
-// dedicated buffered channel so it can never stall the loop that is
-// calling it; a full queue drops the request, which is harmless because
-// the connection is already closed and whichever goroutine owns it will
-// report the unregister.
+// A remoção tem de acontecer na goroutine do laço, porque deliverToUser
+// também é chamado por goroutines de fundo (anúncios de presença), onde
+// mexer no mapa de participação geraria corrida. O envio não bloqueia, num
+// canal dedicado com buffer, para nunca travar o laço que o chama; uma
+// fila cheia descarta o pedido, o que é inofensivo porque a conexão já
+// está fechada e a goroutine dona dela vai informar o unregister.
 func (h *Hub) dropClient(c *Client) {
 	select {
 	case h.drop <- c:
@@ -517,10 +522,10 @@ func (h *Hub) dropClient(c *Client) {
 	}
 }
 
-// conversationMembers returns the member IDs of a conversation, loading
-// them from the database once and caching the result.
+// conversationMembers devolve os IDs dos membros de uma conversa,
+// carregando-os do banco uma vez e guardando o resultado em cache.
 //
-// Run is the only caller, so the cache needs no lock of its own.
+// Run é o único chamador, então o cache não precisa de trava própria.
 func (h *Hub) conversationMembers(ctx context.Context, conversationID int64) (map[int64]struct{}, error) {
 	if cached, ok := h.members[conversationID]; ok {
 		return cached, nil
@@ -540,11 +545,11 @@ func (h *Hub) conversationMembers(ctx context.Context, conversationID int64) (ma
 	return set, nil
 }
 
-// rememberAck stores an acknowledgement for deduplication.
+// rememberAck guarda um ACK para deduplicação.
 //
-// When the cache is full it is emptied rather than evicted one by one:
-// this is a best-effort fast path, and the UNIQUE (sender_id, client_id)
-// index in the database still guarantees correctness.
+// Quando o cache enche, ele é esvaziado em vez de descartar entradas uma a
+// uma: é um atalho de melhor esforço, e o índice UNIQUE (sender_id,
+// client_id) do banco continua garantindo a correção.
 func (h *Hub) rememberAck(key ackKey, ack ws.AckPayload) {
 	if len(h.acks) >= maxAckCacheEntries {
 		h.acks = make(map[ackKey]ws.AckPayload)
@@ -552,8 +557,9 @@ func (h *Hub) rememberAck(key ackKey, ack ws.AckPayload) {
 	h.acks[key] = ack
 }
 
-// memberIDs extracts the member IDs from a membership set in a stable
-// order, so a fan-out does not depend on map iteration order.
+// memberIDs extrai os IDs dos membros de um conjunto de participação numa
+// ordem estável, para que a distribuição não dependa da ordem de
+// iteração do mapa.
 func memberIDs(members map[int64]struct{}) []int64 {
 	ids := make([]int64, 0, len(members))
 	for id := range members {
@@ -562,18 +568,17 @@ func memberIDs(members map[int64]struct{}) []int64 {
 	return ids
 }
 
-// NewClient builds a connection handle for the WebSocket handler.
+// NewClient monta o objeto de uma conexão para o handler WebSocket.
 //
-// The handler owns the read and write loops; the hub only knows the
-// client through the registration, the outgoing queue and this
-// constructor, which keeps the two packages from depending on each
-// other's internals.
+// O handler é dono dos laços de leitura e escrita; o hub só conhece o
+// cliente pelo registro, pela fila de saída e por este construtor, o que
+// impede os dois pacotes de dependerem dos detalhes internos um do outro.
 func (h *Hub) NewClient(userID int64, conn *websocket.Conn) *Client {
 	client, _ := newClient(userID, conn, h.cfg.ClientQueueSize)
 	return client
 }
 
-// Submit queues a frame from a client into the hub loop.
+// Submit enfileira no laço do hub um frame vindo de um cliente.
 func (h *Hub) Submit(ctx context.Context, client *Client, env ws.Envelope, rawSize int) error {
 	return h.submit(ctx, client, env, rawSize)
 }

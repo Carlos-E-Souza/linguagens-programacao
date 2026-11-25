@@ -12,42 +12,42 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-// usernamePattern constrains usernames to lowercase letters, digits and
-// underscores. Restricting them keeps mentions and URLs predictable and
-// avoids Unicode normalisation surprises in a UNIQUE index.
+// usernamePattern restringe os usernames a letras minúsculas, dígitos e
+// sublinhado. A restrição mantém menções e URLs previsíveis e evita
+// surpresas de normalização Unicode num índice UNIQUE.
 var usernamePattern = regexp.MustCompile(`^[a-z0-9_]{3,32}$`)
 
-// maxDisplayNameLength bounds the display name so it cannot be used to
-// flood a client's rendering with megabytes of text.
+// maxDisplayNameLength limita o nome de exibição para que ele não sirva
+// para inundar a tela de um cliente com megabytes de texto.
 const maxDisplayNameLength = 64
 
-// registerRequest is the body of POST /api/auth/register.
+// registerRequest é o corpo de POST /api/auth/register.
 type registerRequest struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
 }
 
-// loginRequest is the body of POST /api/auth/login.
+// loginRequest é o corpo de POST /api/auth/login.
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// loginResponse is what a successful login returns. The token is the
-// only place the client gets it, and the user object carries no hash.
+// loginResponse é o que um login bem-sucedido devolve. É o único lugar
+// em que o cliente recebe o token, e o objeto do usuário não traz hash.
 type loginResponse struct {
 	Token string      `json:"token"`
 	User  models.User `json:"user"`
 }
 
-// handleHealth answers GET /api/health. It has no dependencies so it
-// cannot fail for a reason unrelated to the process being up.
+// handleHealth responde GET /api/health. Não tem dependências, então não
+// pode falhar por um motivo que não seja o processo estar fora do ar.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleRegister creates an account.
+// handleRegister cria uma conta.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := ReadJSON(w, r, &req); err != nil {
@@ -93,7 +93,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, user)
 }
 
-// handleLogin verifies credentials and returns a token.
+// handleLogin confere as credenciais e devolve um token.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := ReadJSON(w, r, &req); err != nil {
@@ -103,8 +103,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	req.Username = strings.ToLower(strings.TrimSpace(req.Username))
 
-	// Both failure modes answer identically: revealing that a username
-	// does not exist would let an attacker enumerate accounts.
+	// Os dois modos de falha respondem igual: revelar que um username não
+	// existe permitiria a um atacante enumerar contas.
 	unauthorized := func() {
 		WriteError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password")
 	}
@@ -112,8 +112,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := s.store.GetUserByUsername(r.Context(), req.Username)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
-			// Hashing anyway keeps the response time similar whether or
-			// not the account exists, so timing does not leak it either.
+			// Calcular o hash mesmo assim mantém o tempo de resposta
+			// parecido exista ou não a conta, então o tempo também não a
+			// revela.
 			_ = s.hasher.CheckPassword("$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv", req.Password)
 			unauthorized()
 			return

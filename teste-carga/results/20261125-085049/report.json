@@ -1,0 +1,836 @@
+{
+  "run_id": "20261125-085049",
+  "started_at": "2026-11-25T08:50:49.803286458-03:00",
+  "config": {
+    "prefix": "carga",
+    "users_created": 0,
+    "groups_created": 0,
+    "server_url": "http://localhost:18090",
+    "users": 100,
+    "direct_conversations": 300,
+    "groups": 6,
+    "group_sizes": [
+      5,
+      5,
+      10,
+      10,
+      20,
+      50
+    ],
+    "rate": 1,
+    "duration_ns": 60000000000,
+    "ramp_ns": 10000000000,
+    "drain_ns": 5000000000,
+    "receipts": true,
+    "seed": 1
+  },
+  "summary": {
+    "sent": 6000,
+    "acked": 6000,
+    "missing_acks": 0,
+    "expected_deliveries": 30941,
+    "delivered": 30941,
+    "missing_deliveries": 0,
+    "duplicates": 0,
+    "order_violations": 0,
+    "disconnects": 0,
+    "ack": {
+      "count": 6000,
+      "p50_ns": 107817110,
+      "p90_ns": 188548908,
+      "p95_ns": 199352668,
+      "p99_ns": 213940342,
+      "max_ns": 236755720,
+      "mean_ns": 102699513
+    },
+    "delivery_direct": {
+      "count": 5183,
+      "p50_ns": 1061808,
+      "p90_ns": 1980050,
+      "p95_ns": 5000052,
+      "p99_ns": 13863943,
+      "max_ns": 25159767,
+      "mean_ns": 1648701
+    },
+    "delivery_group": {
+      "count": 25758,
+      "p50_ns": 1991515,
+      "p90_ns": 3173592,
+      "p95_ns": 5383042,
+      "p99_ns": 14742491,
+      "max_ns": 169089541,
+      "mean_ns": 2502850
+    },
+    "errors": {},
+    "statuses": {
+      "delivered": 863857,
+      "read": 863857
+    },
+    "timeline": [
+      {
+        "second": 0,
+        "sent": 106,
+        "acked": 99,
+        "delivered": 773
+      },
+      {
+        "second": 1,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 561
+      },
+      {
+        "second": 2,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 384
+      },
+      {
+        "second": 3,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 520
+      },
+      {
+        "second": 4,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 253
+      },
+      {
+        "second": 5,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 407
+      },
+      {
+        "second": 6,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 539
+      },
+      {
+        "second": 7,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 723
+      },
+      {
+        "second": 8,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 450
+      },
+      {
+        "second": 9,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 468
+      },
+      {
+        "second": 10,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 311
+      },
+      {
+        "second": 11,
+        "sent": 100,
+        "acked": 99,
+        "delivered": 514
+      },
+      {
+        "second": 12,
+        "sent": 100,
+        "acked": 101,
+        "delivered": 376
+      },
+      {
+        "second": 13,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 421
+      },
+      {
+        "second": 14,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 555
+      },
+      {
+        "second": 15,
+        "sent": 99,
+        "acked": 100,
+        "delivered": 587
+      },
+      {
+        "second": 16,
+        "sent": 101,
+        "acked": 100,
+        "delivered": 617
+      },
+      {
+        "second": 17,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 514
+      },
+      {
+        "second": 18,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 340
+      },
+      {
+        "second": 19,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 645
+      },
+      {
+        "second": 20,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 532
+      },
+      {
+        "second": 21,
+        "sent": 100,
+        "acked": 99,
+        "delivered": 623
+      },
+      {
+        "second": 22,
+        "sent": 100,
+        "acked": 101,
+        "delivered": 384
+      },
+      {
+        "second": 23,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 765
+      },
+      {
+        "second": 24,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 494
+      },
+      {
+        "second": 25,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 590
+      },
+      {
+        "second": 26,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 439
+      },
+      {
+        "second": 27,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 555
+      },
+      {
+        "second": 28,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 454
+      },
+      {
+        "second": 29,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 654
+      },
+      {
+        "second": 30,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 616
+      },
+      {
+        "second": 31,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 689
+      },
+      {
+        "second": 32,
+        "sent": 99,
+        "acked": 100,
+        "delivered": 634
+      },
+      {
+        "second": 33,
+        "sent": 101,
+        "acked": 100,
+        "delivered": 536
+      },
+      {
+        "second": 34,
+        "sent": 100,
+        "acked": 99,
+        "delivered": 449
+      },
+      {
+        "second": 35,
+        "sent": 100,
+        "acked": 101,
+        "delivered": 601
+      },
+      {
+        "second": 36,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 542
+      },
+      {
+        "second": 37,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 418
+      },
+      {
+        "second": 38,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 443
+      },
+      {
+        "second": 39,
+        "sent": 100,
+        "acked": 99,
+        "delivered": 561
+      },
+      {
+        "second": 40,
+        "sent": 100,
+        "acked": 101,
+        "delivered": 435
+      },
+      {
+        "second": 41,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 371
+      },
+      {
+        "second": 42,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 598
+      },
+      {
+        "second": 43,
+        "sent": 100,
+        "acked": 99,
+        "delivered": 536
+      },
+      {
+        "second": 44,
+        "sent": 100,
+        "acked": 101,
+        "delivered": 743
+      },
+      {
+        "second": 45,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 623
+      },
+      {
+        "second": 46,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 284
+      },
+      {
+        "second": 47,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 549
+      },
+      {
+        "second": 48,
+        "sent": 99,
+        "acked": 100,
+        "delivered": 740
+      },
+      {
+        "second": 49,
+        "sent": 101,
+        "acked": 100,
+        "delivered": 455
+      },
+      {
+        "second": 50,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 602
+      },
+      {
+        "second": 51,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 353
+      },
+      {
+        "second": 52,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 609
+      },
+      {
+        "second": 53,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 338
+      },
+      {
+        "second": 54,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 547
+      },
+      {
+        "second": 55,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 400
+      },
+      {
+        "second": 56,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 547
+      },
+      {
+        "second": 57,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 548
+      },
+      {
+        "second": 58,
+        "sent": 100,
+        "acked": 100,
+        "delivered": 358
+      },
+      {
+        "second": 59,
+        "sent": 94,
+        "acked": 100,
+        "delivered": 368
+      },
+      {
+        "second": 60,
+        "sent": 0,
+        "acked": 1,
+        "delivered": 0
+      }
+    ]
+  },
+  "server": [
+    {
+      "at_ns": -94277359,
+      "goroutines": 417,
+      "heap_alloc_bytes": 6976640,
+      "heap_inuse_bytes": 12099584
+    },
+    {
+      "at_ns": 905868354,
+      "goroutines": 420,
+      "heap_alloc_bytes": 6340544,
+      "heap_inuse_bytes": 12517376
+    },
+    {
+      "at_ns": 1908828777,
+      "goroutines": 433,
+      "heap_alloc_bytes": 8368448,
+      "heap_inuse_bytes": 13574144
+    },
+    {
+      "at_ns": 2905953167,
+      "goroutines": 422,
+      "heap_alloc_bytes": 7471456,
+      "heap_inuse_bytes": 13262848
+    },
+    {
+      "at_ns": 3906574034,
+      "goroutines": 420,
+      "heap_alloc_bytes": 6923592,
+      "heap_inuse_bytes": 12984320
+    },
+    {
+      "at_ns": 4905935606,
+      "goroutines": 420,
+      "heap_alloc_bytes": 8849752,
+      "heap_inuse_bytes": 13828096
+    },
+    {
+      "at_ns": 5905912790,
+      "goroutines": 422,
+      "heap_alloc_bytes": 6966512,
+      "heap_inuse_bytes": 13074432
+    },
+    {
+      "at_ns": 6906738904,
+      "goroutines": 427,
+      "heap_alloc_bytes": 7001280,
+      "heap_inuse_bytes": 13156352
+    },
+    {
+      "at_ns": 7906632026,
+      "goroutines": 420,
+      "heap_alloc_bytes": 11168144,
+      "heap_inuse_bytes": 15147008
+    },
+    {
+      "at_ns": 8906394238,
+      "goroutines": 427,
+      "heap_alloc_bytes": 8264232,
+      "heap_inuse_bytes": 13975552
+    },
+    {
+      "at_ns": 9906861517,
+      "goroutines": 420,
+      "heap_alloc_bytes": 6258400,
+      "heap_inuse_bytes": 12615680
+    },
+    {
+      "at_ns": 10905992405,
+      "goroutines": 426,
+      "heap_alloc_bytes": 6489840,
+      "heap_inuse_bytes": 12492800
+    },
+    {
+      "at_ns": 11906070748,
+      "goroutines": 427,
+      "heap_alloc_bytes": 6663184,
+      "heap_inuse_bytes": 12926976
+    },
+    {
+      "at_ns": 12906020069,
+      "goroutines": 426,
+      "heap_alloc_bytes": 7023848,
+      "heap_inuse_bytes": 13139968
+    },
+    {
+      "at_ns": 13906097610,
+      "goroutines": 422,
+      "heap_alloc_bytes": 6732032,
+      "heap_inuse_bytes": 12894208
+    },
+    {
+      "at_ns": 14906515399,
+      "goroutines": 427,
+      "heap_alloc_bytes": 7576032,
+      "heap_inuse_bytes": 14344192
+    },
+    {
+      "at_ns": 15905836286,
+      "goroutines": 422,
+      "heap_alloc_bytes": 8964592,
+      "heap_inuse_bytes": 14614528
+    },
+    {
+      "at_ns": 16906200701,
+      "goroutines": 420,
+      "heap_alloc_bytes": 7434520,
+      "heap_inuse_bytes": 13320192
+    },
+    {
+      "at_ns": 17906122852,
+      "goroutines": 427,
+      "heap_alloc_bytes": 10298832,
+      "heap_inuse_bytes": 14835712
+    },
+    {
+      "at_ns": 18906220775,
+      "goroutines": 427,
+      "heap_alloc_bytes": 7123720,
+      "heap_inuse_bytes": 13058048
+    },
+    {
+      "at_ns": 19906307236,
+      "goroutines": 427,
+      "heap_alloc_bytes": 6451336,
+      "heap_inuse_bytes": 12754944
+    },
+    {
+      "at_ns": 20906398144,
+      "goroutines": 420,
+      "heap_alloc_bytes": 8685984,
+      "heap_inuse_bytes": 14286848
+    },
+    {
+      "at_ns": 21905866983,
+      "goroutines": 442,
+      "heap_alloc_bytes": 9473368,
+      "heap_inuse_bytes": 13672448
+    },
+    {
+      "at_ns": 22906192821,
+      "goroutines": 426,
+      "heap_alloc_bytes": 7623256,
+      "heap_inuse_bytes": 13508608
+    },
+    {
+      "at_ns": 23906074652,
+      "goroutines": 427,
+      "heap_alloc_bytes": 6405584,
+      "heap_inuse_bytes": 12959744
+    },
+    {
+      "at_ns": 24905809617,
+      "goroutines": 427,
+      "heap_alloc_bytes": 9248136,
+      "heap_inuse_bytes": 13647872
+    },
+    {
+      "at_ns": 25906717019,
+      "goroutines": 422,
+      "heap_alloc_bytes": 9157176,
+      "heap_inuse_bytes": 13787136
+    },
+    {
+      "at_ns": 26906778856,
+      "goroutines": 427,
+      "heap_alloc_bytes": 7720424,
+      "heap_inuse_bytes": 13475840
+    },
+    {
+      "at_ns": 27906759295,
+      "goroutines": 420,
+      "heap_alloc_bytes": 7766088,
+      "heap_inuse_bytes": 14131200
+    },
+    {
+      "at_ns": 28906217323,
+      "goroutines": 427,
+      "heap_alloc_bytes": 10101256,
+      "heap_inuse_bytes": 13967360
+    },
+    {
+      "at_ns": 29906642612,
+      "goroutines": 426,
+      "heap_alloc_bytes": 7368024,
+      "heap_inuse_bytes": 13451264
+    },
+    {
+      "at_ns": 30906004231,
+      "goroutines": 427,
+      "heap_alloc_bytes": 7439512,
+      "heap_inuse_bytes": 13434880
+    },
+    {
+      "at_ns": 31906585484,
+      "goroutines": 420,
+      "heap_alloc_bytes": 7136192,
+      "heap_inuse_bytes": 14098432
+    },
+    {
+      "at_ns": 32906248398,
+      "goroutines": 427,
+      "heap_alloc_bytes": 8641728,
+      "heap_inuse_bytes": 13959168
+    },
+    {
+      "at_ns": 33905824645,
+      "goroutines": 432,
+      "heap_alloc_bytes": 8239112,
+      "heap_inuse_bytes": 13729792
+    },
+    {
+      "at_ns": 34906160611,
+      "goroutines": 435,
+      "heap_alloc_bytes": 8028864,
+      "heap_inuse_bytes": 13983744
+    },
+    {
+      "at_ns": 35905991376,
+      "goroutines": 427,
+      "heap_alloc_bytes": 7389760,
+      "heap_inuse_bytes": 13737984
+    },
+    {
+      "at_ns": 36905903255,
+      "goroutines": 422,
+      "heap_alloc_bytes": 7275760,
+      "heap_inuse_bytes": 13664256
+    },
+    {
+      "at_ns": 37906309446,
+      "goroutines": 426,
+      "heap_alloc_bytes": 6408080,
+      "heap_inuse_bytes": 12918784
+    },
+    {
+      "at_ns": 38905968722,
+      "goroutines": 427,
+      "heap_alloc_bytes": 6413176,
+      "heap_inuse_bytes": 13221888
+    },
+    {
+      "at_ns": 39906789164,
+      "goroutines": 431,
+      "heap_alloc_bytes": 10594752,
+      "heap_inuse_bytes": 14811136
+    },
+    {
+      "at_ns": 40905965255,
+      "goroutines": 433,
+      "heap_alloc_bytes": 6909600,
+      "heap_inuse_bytes": 13565952
+    },
+    {
+      "at_ns": 41905876770,
+      "goroutines": 426,
+      "heap_alloc_bytes": 6964000,
+      "heap_inuse_bytes": 13697024
+    },
+    {
+      "at_ns": 42905923492,
+      "goroutines": 422,
+      "heap_alloc_bytes": 7821888,
+      "heap_inuse_bytes": 14360576
+    },
+    {
+      "at_ns": 43906020150,
+      "goroutines": 427,
+      "heap_alloc_bytes": 8060840,
+      "heap_inuse_bytes": 14131200
+    },
+    {
+      "at_ns": 44906503525,
+      "goroutines": 422,
+      "heap_alloc_bytes": 7508568,
+      "heap_inuse_bytes": 14032896
+    },
+    {
+      "at_ns": 45906183350,
+      "goroutines": 422,
+      "heap_alloc_bytes": 8408120,
+      "heap_inuse_bytes": 14245888
+    },
+    {
+      "at_ns": 46906021464,
+      "goroutines": 427,
+      "heap_alloc_bytes": 10229200,
+      "heap_inuse_bytes": 15007744
+    },
+    {
+      "at_ns": 47906196803,
+      "goroutines": 427,
+      "heap_alloc_bytes": 8169992,
+      "heap_inuse_bytes": 14065664
+    },
+    {
+      "at_ns": 48905748067,
+      "goroutines": 420,
+      "heap_alloc_bytes": 11589936,
+      "heap_inuse_bytes": 17408000
+    },
+    {
+      "at_ns": 49906161416,
+      "goroutines": 420,
+      "heap_alloc_bytes": 9823800,
+      "heap_inuse_bytes": 15278080
+    },
+    {
+      "at_ns": 50906009347,
+      "goroutines": 418,
+      "heap_alloc_bytes": 10517240,
+      "heap_inuse_bytes": 15212544
+    },
+    {
+      "at_ns": 51906530306,
+      "goroutines": 424,
+      "heap_alloc_bytes": 8086096,
+      "heap_inuse_bytes": 14352384
+    },
+    {
+      "at_ns": 52906299303,
+      "goroutines": 420,
+      "heap_alloc_bytes": 7058024,
+      "heap_inuse_bytes": 13549568
+    },
+    {
+      "at_ns": 53905852911,
+      "goroutines": 427,
+      "heap_alloc_bytes": 7953408,
+      "heap_inuse_bytes": 15065088
+    },
+    {
+      "at_ns": 54905972595,
+      "goroutines": 420,
+      "heap_alloc_bytes": 7273808,
+      "heap_inuse_bytes": 13893632
+    },
+    {
+      "at_ns": 55905893965,
+      "goroutines": 418,
+      "heap_alloc_bytes": 8236272,
+      "heap_inuse_bytes": 14557184
+    },
+    {
+      "at_ns": 56905964859,
+      "goroutines": 424,
+      "heap_alloc_bytes": 11569232,
+      "heap_inuse_bytes": 15073280
+    },
+    {
+      "at_ns": 57906880514,
+      "goroutines": 431,
+      "heap_alloc_bytes": 7420144,
+      "heap_inuse_bytes": 14188544
+    },
+    {
+      "at_ns": 58906070553,
+      "goroutines": 418,
+      "heap_alloc_bytes": 12544672,
+      "heap_inuse_bytes": 16056320
+    },
+    {
+      "at_ns": 59905971582,
+      "goroutines": 425,
+      "heap_alloc_bytes": 10743528,
+      "heap_inuse_bytes": 15048704
+    },
+    {
+      "at_ns": 60906438345,
+      "goroutines": 415,
+      "heap_alloc_bytes": 8636168,
+      "heap_inuse_bytes": 15540224
+    },
+    {
+      "at_ns": 61906345889,
+      "goroutines": 414,
+      "heap_alloc_bytes": 9156312,
+      "heap_inuse_bytes": 15941632
+    },
+    {
+      "at_ns": 62906451528,
+      "goroutines": 414,
+      "heap_alloc_bytes": 9667528,
+      "heap_inuse_bytes": 16277504
+    },
+    {
+      "at_ns": 63906709822,
+      "goroutines": 414,
+      "heap_alloc_bytes": 10190760,
+      "heap_inuse_bytes": 16654336
+    }
+  ],
+  "pprof_available": true,
+  "interrupted": false,
+  "profile_files": [
+    "cpu.pprof",
+    "heap.pprof"
+  ]
+}

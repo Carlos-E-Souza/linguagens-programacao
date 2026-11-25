@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// TestLoggingPassesThroughAndRecordsStatus checks the middleware does
-// not change the response: it only observes it.
+// TestLoggingPassesThroughAndRecordsStatus confere que o middleware não
+// muda a resposta: ele só a observa.
 func TestLoggingPassesThroughAndRecordsStatus(t *testing.T) {
 	handler := Logging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
@@ -26,8 +26,8 @@ func TestLoggingPassesThroughAndRecordsStatus(t *testing.T) {
 	}
 }
 
-// TestLoggingDefaultsToOK covers a handler that writes without calling
-// WriteHeader, which makes Go imply 200.
+// TestLoggingDefaultsToOK cobre um handler que escreve sem chamar
+// WriteHeader, o que faz o Go assumir 200.
 func TestLoggingDefaultsToOK(t *testing.T) {
 	handler := Logging(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("ok"))
@@ -41,10 +41,10 @@ func TestLoggingDefaultsToOK(t *testing.T) {
 	}
 }
 
-// TestRecoverConvertsPanicTo500 is the important one: a panicking
-// handler must not take down the process.
+// TestRecoverConvertsPanicTo500 é o caso importante: um handler em panic
+// não pode derrubar o processo.
 func TestRecoverConvertsPanicTo500(t *testing.T) {
-	// Silence the expected panic log so the test output stays readable.
+	// Silencia o log de panic esperado para a saída do teste ficar legível.
 	slog.SetLogLoggerLevel(slog.LevelError + 100)
 	t.Cleanup(func() { slog.SetLogLoggerLevel(slog.LevelInfo) })
 
@@ -54,7 +54,8 @@ func TestRecoverConvertsPanicTo500(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	// If Recover did not work, this call would panic and fail the test.
+	// Se Recover não funcionasse, esta chamada entraria em panic e
+	// derrubaria o teste.
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 
 	if got, want := rec.Code, http.StatusInternalServerError; got != want {
@@ -62,8 +63,8 @@ func TestRecoverConvertsPanicTo500(t *testing.T) {
 	}
 }
 
-// TestRecoverLeavesNormalRequestsAlone guards against the recovery path
-// firing when nothing went wrong.
+// TestRecoverLeavesNormalRequestsAlone protege contra o caminho de
+// recuperação disparar quando nada deu errado.
 func TestRecoverLeavesNormalRequestsAlone(t *testing.T) {
 	handler := Recover(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

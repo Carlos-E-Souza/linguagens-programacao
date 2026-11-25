@@ -1,16 +1,16 @@
-// Command loadgen measures the throughput and latency of the chat server
-// under many concurrent WebSocket connections.
+// Comando loadgen mede a vazão e a latência do servidor de chat com
+// muitas conexões WebSocket simultâneas.
 //
-// It registers its own users, opens one connection per user, has them
-// send messages into a shared group and reports the latency distribution
-// of the acknowledgements.
+// Ele cadastra os próprios usuários, abre uma conexão por usuário, faz
+// todos enviarem mensagens para um grupo compartilhado e informa a
+// distribuição de latência dos ACKs.
 //
-// Usage:
+// Uso:
 //
 //	go run ./cmd/loadgen -server http://localhost:8080 -clients 200 -messages 20
 //
-// The flags are deliberately small by default so the tool is safe to run
-// against a local server without thinking about it.
+// Os valores padrão das flags são pequenos de propósito, então é seguro
+// rodar a ferramenta contra um servidor local sem pensar muito.
 package main
 
 import (
@@ -47,7 +47,7 @@ func main() {
 	}
 }
 
-// stats collects the latencies and counts observed during the run.
+// stats reúne as latências e contagens observadas durante a execução.
 type stats struct {
 	mu        sync.Mutex
 	latencies []time.Duration
@@ -64,7 +64,7 @@ func (s *stats) record(d time.Duration) {
 	s.acked.Add(1)
 }
 
-// percentile returns the p-th percentile of the recorded latencies.
+// percentile devolve o p-ésimo percentil das latências registradas.
 func (s *stats) percentile(p float64) time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -95,7 +95,7 @@ func run(serverURL string, clients, perClient int, runFor, reportEvery time.Dura
 
 	fmt.Printf("loadgen: registering %d users on %s\n", clients+1, serverURL)
 
-	// One owner creates the group; everybody else joins it.
+	// Um dono cria o grupo; todos os outros entram nele.
 	ownerToken, err := registerAndLogin(ctx, client, serverURL, fmt.Sprintf("load_owner_%d", runID))
 	if err != nil {
 		return fmt.Errorf("register owner: %w", err)
@@ -127,7 +127,7 @@ func run(serverURL string, clients, perClient int, runFor, reportEvery time.Dura
 
 	var wg sync.WaitGroup
 
-	// Optional progress reporting so a long run is not silent.
+	// Relatório de progresso opcional, para uma execução longa não ficar muda.
 	stopReport := make(chan struct{})
 	if reportEvery > 0 {
 		go func() {
@@ -167,8 +167,8 @@ func run(serverURL string, clients, perClient int, runFor, reportEvery time.Dura
 	return nil
 }
 
-// driveClient opens one connection and sends its messages, timing each
-// acknowledgement.
+// driveClient abre uma conexão e envia suas mensagens, medindo o tempo de
+// cada ACK.
 func driveClient(ctx context.Context, serverURL, token string, conversationID int64, count, idx int, st *stats) error {
 	wsURL := strings.Replace(serverURL, "http://", "ws://", 1)
 	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
@@ -184,10 +184,10 @@ func driveClient(ctx context.Context, serverURL, token string, conversationID in
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "")
 
-	// Latency is measured per message, so each send time has to be
-	// matched with the acknowledgement that carries its client_id. The
-	// reader records arrival times keyed by that ID and the sender picks
-	// them up, which keeps the two goroutines independent.
+	// A latência é medida por mensagem, então cada horário de envio precisa
+	// ser pareado com o ACK que traz o seu client_id. O leitor registra os
+	// horários de chegada indexados por esse ID e o remetente os recolhe,
+	// o que mantém as duas goroutines independentes.
 	acks := make(chan ackEvent, count+8)
 	readErr := make(chan error, 1)
 
@@ -217,7 +217,7 @@ func driveClient(ctx context.Context, serverURL, token string, conversationID in
 		}
 	}()
 
-	// sentAt maps a client_id to the moment it was written.
+	// sentAt associa cada client_id ao momento em que foi escrito.
 	sentAt := make(map[string]time.Time, count)
 	pending := make(map[string]bool, count)
 
@@ -250,8 +250,8 @@ func driveClient(ctx context.Context, serverURL, token string, conversationID in
 		pending[clientID] = true
 		st.sent.Add(1)
 
-		// Collect whatever acknowledgements have already arrived, without
-		// blocking, so sending keeps up with the server.
+		// Recolhe os ACKs que já chegaram, sem bloquear, para que o envio
+		// acompanhe o servidor.
 		drainAcks(st, acks, sentAt, pending)
 	}
 
@@ -271,13 +271,13 @@ func driveClient(ctx context.Context, serverURL, token string, conversationID in
 	return nil
 }
 
-// ackEvent is an acknowledgement together with the instant it arrived.
+// ackEvent é um ACK junto com o instante em que chegou.
 type ackEvent struct {
 	clientID string
 	at       time.Time
 }
 
-// drainAcks consumes every acknowledgement that is ready right now.
+// drainAcks consome todos os ACKs disponíveis neste momento.
 func drainAcks(st *stats, acks <-chan ackEvent, sentAt map[string]time.Time, pending map[string]bool) {
 	for {
 		select {
@@ -289,12 +289,12 @@ func drainAcks(st *stats, acks <-chan ackEvent, sentAt map[string]time.Time, pen
 	}
 }
 
-// recordAck matches an acknowledgement with its send time and records the
-// round trip.
+// recordAck pareia um ACK com o seu horário de envio e registra o tempo
+// de ida e volta.
 func recordAck(st *stats, ev ackEvent, sentAt map[string]time.Time, pending map[string]bool) {
 	if !pending[ev.clientID] {
-		// An acknowledgement for an unknown or already-counted message
-		// would otherwise skew the percentiles.
+		// Um ACK de mensagem desconhecida ou já contada distorceria os
+		// percentis.
 		return
 	}
 	delete(pending, ev.clientID)
