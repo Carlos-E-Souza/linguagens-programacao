@@ -31,6 +31,27 @@ func (a *App) SearchUsers(term string) ([]api.User, error) {
 	return nonNil(users), nil
 }
 
+// searchPageSize é quantos resultados uma busca traz por vez (o servidor limita em 50).
+const searchPageSize = 20
+
+// SearchMessages busca mensagens de uma conversa no servidor, da mais nova para a mais antiga. before = 0 pede os
+// resultados mais recentes; para a página seguinte, passe a menor sequência já recebida. Só funciona com conexão:
+// o cache local guarda apenas parte do histórico.
+func (a *App) SearchMessages(conversationID int64, term string, before int64) ([]api.Message, error) {
+	s := a.current()
+	if s == nil {
+		return nil, errNoSession
+	}
+	messages, err := a.api.SearchMessages(s.ctx, conversationID, term, before, searchPageSize)
+	if err != nil {
+		return nil, friendly(err, map[int]string{
+			http.StatusBadRequest: "Digite de 2 a 100 caracteres para buscar.",
+			http.StatusNotFound:   "Esta conversa não existe mais.",
+		})
+	}
+	return nonNil(messages), nil
+}
+
 // CreateDirectConversation abre a conversa individual com o usuário, criando-a se ainda não existir.
 func (a *App) CreateDirectConversation(userID int64) (api.Conversation, error) {
 	s := a.current()

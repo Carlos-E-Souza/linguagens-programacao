@@ -22,7 +22,7 @@ const RENDER_STEP = 100;
  * Janela da conversa aberta: cabeçalho, histórico com separadores de dia e rolagem infinita para cima, e o campo
  * de escrita.
  * props: { conversation, me, page: { items, hasMore, loading, loaded, error }, onLoadOlder(), onRetry(),
- *          onSend(body), onRetryMessage(clientId), onShowDetails() }
+ *          onSend(body), onRetryMessage(clientId), onShowDetails(), onSearch(term, before) }
  *          onSearch(term, before)
  */
 export function createChatWindow(props) {

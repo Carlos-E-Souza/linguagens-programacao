@@ -12,12 +12,12 @@ import (
 	"github.com/Carlos-E-Souza/linguagens-programacao/back-end/internal/models"
 )
 
-func testNormalizeSearchTerm(t *testing.T) {
+func TestNormalizeSearchTerm(t *testing.T) {
 	cases := []struct {
-		name      string
-		raw       string
-		want      string
-		wantError error
+		name    string
+		raw     string
+		want    string
+		wantErr error
 	}{
 		{"plain", "reunião", "reunião", nil},
 		{"trims edges", "  oi mundo  ", "oi mundo", nil},
@@ -33,20 +33,17 @@ func testNormalizeSearchTerm(t *testing.T) {
 		{"invalid utf-8", "ab\xff\xfe", "", errSearchTermInvalid},
 		{"wildcards are kept literal here", "100%_ok", "100%_ok", nil},
 	}
-
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := normalizeSearchTerm(tc.raw)
-			if !errors.Is(err, tc.wantError) {
-				t.Fatalf("normalizeSearchTerm(%q) error = %v, want %v", tc.raw, err, tc.wantError)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("normalizeSearchTerm(%q) error = %v, want %v", tc.raw, err, tc.wantErr)
 			}
 			if got != tc.want {
 				t.Errorf("normalizeSearchTerm(%q) = %q, want %q", tc.raw, got, tc.want)
 			}
 		})
-
 	}
-
 }
 
 func TestSearchMessagesEndpoint(t *testing.T) {
@@ -88,19 +85,19 @@ func TestSearchMessagesEndpoint(t *testing.T) {
 		t.Errorf("results = %+v, want sequences [3 2]", found)
 	}
 
-	// An empty result is "[]", never "null": the client iterates over it.
+	// Resultado vazio é "[]", nunca "null": o cliente itera sobre ele.
 	rec = f.do(http.MethodGet, path+"?q=zzzz", aliceToken, nil)
 	if got := rec.Body.String(); got != "[]\n" && got != "[]" {
 		t.Errorf("empty result body = %q, want []", got)
 	}
 
-	// A non-member must not learn the conversation exists.
+	// Quem não é membro não pode descobrir que a conversa existe.
 	rec = f.do(http.MethodGet, path+"?q=reuni%C3%A3o", eveToken, nil)
 	if got, want := rec.Code, http.StatusNotFound; got != want {
 		t.Errorf("non-member status: got %d, want %d", got, want)
 	}
 
-	// Bad input is a client error.
+	// Entrada inválida é erro do cliente.
 	for _, query := range []string{"", "?q=a", "?q=%20%20", "?q=oi&before=abc", "?q=oi&limit=-1"} {
 		rec = f.do(http.MethodGet, path+query, aliceToken, nil)
 		if got, want := rec.Code, http.StatusBadRequest; got != want {
@@ -108,7 +105,7 @@ func TestSearchMessagesEndpoint(t *testing.T) {
 		}
 	}
 
-	// A limit above the maximum is clamped, not honoured.
+	// Um limit acima do máximo é reduzido, não obedecido.
 	rec = f.do(http.MethodGet, path+"?q=oi&limit=99999", aliceToken, nil)
 	if got, want := rec.Code, http.StatusOK; got != want {
 		t.Errorf("clamped limit status: got %d, want %d (%s)", got, want, rec.Body)
