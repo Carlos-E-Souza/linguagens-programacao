@@ -302,6 +302,7 @@
       <p class="side-title">Conceitos</p>
       <a href="#recursos-go">Recursos de Go</a>
       <a href="#confiabilidade">Confiabilidade</a>
+      <a href="#teste-carga">Teste de carga</a>
     </div>
     <div class="side-group">
       <p class="side-title">Referência</p>
@@ -350,8 +351,8 @@
       <!-- ================= APLICAÇÕES ================= -->
       <section class="doc" id="aplicacoes">
         <h2>Aplicações<a class="anchor" href="#aplicacoes" aria-hidden="true">#</a></h2>
-        <p>O repositório contém duas aplicações independentes, cada uma com seu próprio módulo Go.</p>
-        <div class="grid grid-2">
+        <p>O repositório contém três módulos Go independentes: o servidor, o cliente desktop e o teste de carga.</p>
+        <div class="grid grid-3">
           <article class="card">
             <div class="kind">back-end · Go</div>
             <h3>Servidor de mensagens</h3>
@@ -371,6 +372,15 @@
               mensagem (enviada, entregue, lida).
             </p>
             <p style="margin-top:.8rem"><a href="https://github.com/Carlos-E-Souza/linguagens-programacao/tree/main/front-end" target="_blank" rel="noopener">Ver <code>front-end/</code> ↗</a></p>
+          </article>
+          <article class="card">
+            <div class="kind">teste-carga · Go</div>
+            <h3>Teste de carga</h3>
+            <p>
+              Simula 100 usuários em conversas diretas e grupos contra o servidor real. Mede ACK, entrega,
+              perdas, duplicatas e ordem, coleta goroutines e heap via pprof e grava um relatório.
+            </p>
+            <p style="margin-top:.8rem"><a href="https://github.com/Carlos-E-Souza/linguagens-programacao/tree/main/teste-carga" target="_blank" rel="noopener">Ver <code>teste-carga/</code> ↗</a></p>
           </article>
         </div>
       </section>
@@ -474,6 +484,46 @@ for {
         ↘ failed (erro definitivo do servidor)</code></pre>
       </section>
 
+      <!-- ================= TESTE DE CARGA ================= -->
+      <section class="doc" id="teste-carga">
+        <h2>Teste de carga<a class="anchor" href="#teste-carga" aria-hidden="true">#</a></h2>
+        <p>
+          O módulo <code>teste-carga/</code> usa um cliente leve próprio, sem o cache SQLite do cliente desktop,
+          para medir só o servidor. Cada mensagem é rastreada pelo <code>client_id</code>, que volta no ACK e no
+          <code>message.new</code>.
+        </p>
+        <h3>Cenário padrão</h3>
+        <ul>
+          <li>100 usuários (<code>carga_u000</code>…), conectados ao longo de 10 s de rampa.</li>
+          <li>300 conversas diretas: cada usuário conversa com os 3 seguintes, em anel.</li>
+          <li>6 grupos de 5, 5, 10, 10, 20 e 50 membros (<code>carga_g00</code>…).</li>
+          <li>1 mensagem/s por usuário durante 60 s, mais 5 s de drenagem; destinatários enviam <code>message.delivered</code> e <code>message.read</code>.</li>
+          <li>Usuários e grupos são reaproveitados entre execuções; <code>make load-reset</code> apaga o banco.</li>
+        </ul>
+        <h3>Resultado de uma execução (25/11/2026)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Métrica</th><th>Valor</th></tr></thead>
+            <tbody>
+              <tr><td>Mensagens enviadas</td><td>6000 (100 msg/s), 100% com ACK</td></tr>
+              <tr><td>Entregas</td><td>30 941 de 30 941 (100%)</td></tr>
+              <tr><td>Perdas, duplicatas, violações de ordem</td><td>0, 0, 0</td></tr>
+              <tr><td>Entrega p50 / p99 (direta)</td><td>1,1 ms / 13,9 ms</td></tr>
+              <tr><td>Entrega p50 / p99 (grupo)</td><td>2,0 ms / 14,7 ms</td></tr>
+              <tr><td>ACK p50 / p99</td><td>107,8 ms / 213,9 ms</td></tr>
+              <tr><td>Goroutines no servidor</td><td>414 a 442</td></tr>
+              <tr><td>Heap em uso (máx.)</td><td>16,6 MiB</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <p>
+            A entrega não espera o banco; o ACK espera o id gravado pelo worker pool (até 2 s), por isso é mais
+            lento. Servidor e gerador rodaram na mesma máquina, disputando a CPU.
+          </p>
+        </div>
+      </section>
+
       <!-- ================= API REST ================= -->
       <section class="doc" id="api-rest">
         <h2>API REST<a class="anchor" href="#api-rest" aria-hidden="true">#</a></h2>
@@ -546,6 +596,7 @@ for {
   internal/hub/          <span class="c">roteamento, presença, status, sync</span>
   internal/store/        <span class="c">worker pool de persistência</span>
   internal/ws/           <span class="c">envelope e payloads do protocolo</span>
+  docs/                  <span class="c">plano, protocolo e modelo de dados</span>
 front-end/               <span class="c">cliente desktop Wails</span>
   app.go, live.go, sync.go, conversations.go
   internal/api/          <span class="c">cliente REST</span>
@@ -554,6 +605,15 @@ front-end/               <span class="c">cliente desktop Wails</span>
   internal/queue/        <span class="c">fila de pendentes</span>
   internal/events/       <span class="c">eventos para a interface</span>
   frontend/src/          <span class="c">screens, components, actions, state, bridge</span>
+  docs/                  <span class="c">plano, métodos de App e validação</span>
+teste-carga/             <span class="c">teste de carga (módulo próprio)</span>
+  main.go                <span class="c">fases: preparação, conexão, carga, drenagem, relatório</span>
+  internal/protocol/     <span class="c">cópia do contrato WS</span>
+  internal/scenario/     <span class="c">usuários, conversas e grupos</span>
+  internal/client/       <span class="c">cliente leve REST + WS</span>
+  internal/metrics/      <span class="c">latência, perdas, duplicatas, ordem</span>
+  internal/profiler/     <span class="c">amostras de goroutines e heap via pprof</span>
+  internal/report/       <span class="c">relatório em results/</span>
 Makefile                 <span class="c">atalhos: make help</span></code></pre>
       </section>
 
@@ -572,6 +632,8 @@ Makefile                 <span class="c">atalhos: make help</span></code></pre>
               <tr><td>WS autenticado pelo header</td><td>O cliente WS é Go, não navegador</td></tr>
               <tr><td>Cache local SQLite por usuário</td><td>Sessão e fila de pendentes sobrevivem a reinício</td></tr>
               <tr><td>pprof só com <code>DEV_MODE</code></td><td>Endpoints de profiling não têm autenticação</td></tr>
+              <tr><td>Teste de carga em módulo próprio</td><td>Não dá para importar <code>internal/</code> de outro módulo; mede o servidor sem o custo do cache do cliente</td></tr>
+              <tr><td>Usuários e grupos fixos na carga</td><td>Reexecução só reenvia mensagens</td></tr>
             </tbody>
           </table>
         </div>
@@ -590,10 +652,18 @@ make dev
 <span class="c"># Só a interface, com dados falsos (sem servidor)</span>
 make dev-mock</code></pre>
         <h3>Testes e qualidade</h3>
-        <pre><code>make test      <span class="c"># testes dos dois módulos com -race</span>
+        <pre><code>make test      <span class="c"># testes dos três módulos com -race</span>
 make vet       <span class="c"># análise estática</span>
 make e2e       <span class="c"># ponta a ponta (servidor em E2E_SERVER_URL)</span>
-make loadgen   <span class="c"># teste de carga: CLIENTS=100 MESSAGES=20</span></code></pre>
+make loadgen   <span class="c"># carga simples: CLIENTS=100 MESSAGES=20</span></code></pre>
+        <h3>Teste de carga</h3>
+        <pre><code><span class="c"># Terminal 1 — servidor com pprof em :6060 e banco em /tmp/chat-load.db</span>
+make load-server
+
+<span class="c"># Terminal 2 — 100 usuários por 60 s; relatório em teste-carga/results/</span>
+make load-test
+
+make load-reset  <span class="c"># apaga o banco da carga (com o servidor parado)</span></code></pre>
         <div class="note">
           <p>Fora do modo dev, o servidor exige <code>JWT_SECRET</code>. Copie <code>back-end/.env.example</code> para <code>.env</code> e ajuste os valores.</p>
         </div>
@@ -677,7 +747,7 @@ make loadgen   <span class="c"># teste de carga: CLIENTS=100 MESSAGES=20</span><
       const sideLinks = [...sidebar.querySelectorAll("a")];
       const navGroups = {
         apresentacao: ["apresentacao", "aplicacoes"],
-        arquitetura: ["arquitetura", "funcionamento", "recursos-go", "confiabilidade"],
+        arquitetura: ["arquitetura", "funcionamento", "recursos-go", "confiabilidade", "teste-carga"],
         "api-rest": ["api-rest", "protocolo-ws", "estrutura", "decisoes"],
         "como-rodar": ["como-rodar", "convencoes"],
         video: ["video"],
