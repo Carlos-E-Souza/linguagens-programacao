@@ -8,8 +8,7 @@ Cliente desktop do chat em tempo real, feito com [Wails](https://wails.io). Tem 
   Nunca fala direto com o servidor: tudo passa pela camada Go.
 
 > **Convenção de nomes:** identificadores em inglês (pacotes, arquivos, funções, eventos, módulos JS, chaves JSON),
-> prosa em português (comentários, documentação e textos da interface), conforme `back-end/PLANO.md`. O plano de
-> implementação do cliente está em [`PLANO.md`](PLANO.md).
+> prosa em português (comentários, documentação e textos da interface).
 
 ## Estrutura
 
@@ -31,8 +30,10 @@ frontend/src/
   mock-bridge.js         dados falsos para desenvolver no navegador sem o Wails
   screens/               telas (login, chat)
   components/            componentes (avatar, lista de conversas, janela, bolha, campo de mensagem, indicador de conexão,
-                         modal, busca de pessoas, busca de mensagens, nova conversa, novo grupo, detalhes do grupo)
-  utils/                 dom, datas, ícones, regras de apresentação de conversas e destaque da busca (search.js)
+                         modal, busca de pessoas, busca de mensagens, seletor de membros, nova conversa, novo grupo,
+                         detalhes do grupo)
+  utils/                 dom, datas, ícones, regras de apresentação de conversas, validação do cadastro e
+                         destaque da busca (`search.js`)
   styles/                tokens.css, base.css, login.css, chat.css, dialogs.css
 ```
 
@@ -97,7 +98,7 @@ precisam dela explicitamente.
 # Desenvolvimento com hot reload (abre a janela do app)
 SERVER_URL=http://localhost:8080 wails dev
 
-# App com dados falsos, sem servidor (enquanto o back-end não existe); login: qualquer usuário, senha "senha1234"
+# App com dados falsos, sem servidor; login: qualquer usuário, senha "senha1234"
 VITE_MOCK=true wails dev
 
 # Só a interface no navegador, também com dados falsos
@@ -112,6 +113,9 @@ mockChat.presence(3, true)
 
 # Testes da camada Go
 go test -race -tags webkit2_41 ./...
+
+# Testes dos utilitários JS (node --test)
+cd frontend && npm test
 
 # Regenerar os bindings JS após mudar os métodos de App
 wails generate module -tags webkit2_41
@@ -140,9 +144,44 @@ cd front-end
 XDG_CONFIG_HOME=/tmp/chat-b SERVER_URL=http://localhost:8080 ./build/bin/chat-client
 ```
 
-No Windows (PowerShell), troque `XDG_CONFIG_HOME=...` por `$env:APPDATA = 'C:\temp\chat-a'` (e `chat-b` na outra
-janela) e rode `.\build\bin\chat-client.exe`. Confirme que `http://localhost:8080/api/health` responde antes de
-abrir os clientes.
+### Dois clientes no Windows (PowerShell)
+
+Abra a pasta raiz do repositório no Explorador de Arquivos. Clique na barra de endereço, digite `powershell` e
+pressione Enter. Esse é o terminal do servidor; execute:
+
+```powershell
+Set-Location .\back-end
+$env:DEV_MODE = 'true'
+$env:DATABASE_PATH = '.\chat-teste.db'
+go run ./cmd/server
+```
+
+Deixe esse terminal aberto. Abra outro PowerShell na pasta raiz do repositório pelo mesmo procedimento. Confira se
+`http://localhost:8080/api/health` responde e gere o executável:
+
+```powershell
+Invoke-WebRequest 'http://localhost:8080/api/health' -UseBasicParsing
+Set-Location .\front-end
+wails build
+$env:APPDATA = Join-Path $env:TEMP 'chat-teste-a'
+$env:SERVER_URL = 'http://localhost:8080'
+& '.\build\bin\chat-client.exe'
+```
+
+A primeira janela **Chat** deve abrir na tela de login (ou na sessão salva, se você já usou essa pasta). Deixe o
+segundo PowerShell aberto. Abra um terceiro PowerShell na pasta raiz do repositório e execute:
+
+```powershell
+Set-Location .\front-end
+$env:APPDATA = Join-Path $env:TEMP 'chat-teste-b'
+$env:SERVER_URL = 'http://localhost:8080'
+& '.\build\bin\chat-client.exe'
+```
+
+Agora devem existir duas janelas **Chat** independentes. `APPDATA` diferente em cada terminal separa o cache e a
+sessão das contas; cada janela pode entrar com um usuário diferente. Mantenha os três terminais abertos durante o
+teste. Se precisar de uma terceira conta para testar adicionar e remover membros, abra mais um PowerShell na raiz e
+repita o último bloco com `chat-teste-c`.
 
 ### Roteiro de teste manual
 
