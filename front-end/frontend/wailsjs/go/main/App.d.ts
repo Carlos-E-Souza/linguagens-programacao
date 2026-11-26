@@ -30,6 +30,8 @@ export function RestoreSession():Promise<api.User>;
 
 export function RetryMessage(arg1:string):Promise<api.Message>;
 
+export function SearchMessages(arg1:number,arg2:string,arg3:number):Promise<Array<api.Message>>;
+
 export function SearchUsers(arg1:string):Promise<Array<api.User>>;
 
 export function SendMessage(arg1:number,arg2:string):Promise<api.Message>;

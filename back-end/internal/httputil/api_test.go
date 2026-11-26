@@ -283,6 +283,7 @@ func TestProtectedRoutesRequireToken(t *testing.T) {
 		{http.MethodGet, "/api/conversations"},
 		{http.MethodPost, "/api/conversations"},
 		{http.MethodGet, "/api/conversations/1/messages"},
+		{http.MethodGet, "/api/conversations/1/messages/search"},
 	}
 
 	for _, p := range paths {

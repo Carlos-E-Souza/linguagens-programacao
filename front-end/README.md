@@ -30,8 +30,10 @@ frontend/src/
   mock-bridge.js         dados falsos para desenvolver no navegador sem o Wails
   screens/               telas (login, chat)
   components/            componentes (avatar, lista de conversas, janela, bolha, campo de mensagem, indicador de conexão,
-                         modal, busca de pessoas, seletor de membros, nova conversa, novo grupo, detalhes do grupo)
-  utils/                 dom, datas, ícones, regras de apresentação de conversas e validação do cadastro
+                         modal, busca de pessoas, busca de mensagens, seletor de membros, nova conversa, novo grupo,
+                         detalhes do grupo)
+  utils/                 dom, datas, ícones, regras de apresentação de conversas, validação do cadastro e
+                         destaque da busca (`search.js`)
   styles/                tokens.css, base.css, login.css, chat.css, dialogs.css
 ```
 
@@ -197,6 +199,10 @@ repita o último bloco com `chat-teste-c`.
    presença, Ana como administradora. Envie mensagens: ✓✓ só quando todos receberem, azul só quando todos lerem.
 8. **Membros:** Ana adiciona e remove alguém pelos detalhes; o grupo some da lista de quem foi removido. Bruno tenta
    remover alguém (não aparece o botão) e depois sai pelo "Sair do grupo".
+9. **Busca:** com mensagens trocadas, clique na lupa do cabeçalho da conversa e digite um trecho (2 ou mais
+   caracteres). Os resultados vêm da mais nova para a mais antiga, com o trecho destacado; "Carregar mais" aparece
+   com 20 ou mais resultados; **Esc** fecha a busca e trocar de conversa também. A busca exige conexão com o
+   servidor (não usa o cache local). Limite conhecido: `REUNIÃO` não encontra `reunião` e `reuniao` também não.
 
 ### Teste automático de ponta a ponta
 

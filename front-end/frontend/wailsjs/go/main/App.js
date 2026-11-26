@@ -58,6 +58,10 @@ export function RetryMessage(arg1) {
   return window['go']['main']['App']['RetryMessage'](arg1);
 }
 
+export function SearchMessages(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SearchMessages'](arg1, arg2, arg3);
+}
+
 export function SearchUsers(arg1) {
   return window['go']['main']['App']['SearchUsers'](arg1);
 }

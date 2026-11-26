@@ -7,6 +7,7 @@ import {
   openConversation,
   removeMember,
   retryMessage,
+  searchMessages,
   searchUsers,
   sendMessage,
   startDirectConversation,
@@ -207,6 +208,7 @@ export function createChatScreen() {
       onSend: (body) => sendMessage(id, body),
       onRetryMessage: (clientId) => retryMessage(clientId),
       onShowDetails: () => showModal('details'),
+      onSearch: (term, before) => searchMessages(id, term, before),
     };
     if (!chatWindow) {
       chatWindow = createChatWindow(windowProps);

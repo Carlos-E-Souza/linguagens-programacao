@@ -53,6 +53,7 @@ export const bridge = {
   retryMessage: call('RetryMessage'),
   markAsRead: call('MarkAsRead'),
   searchUsers: call('SearchUsers'),
+  searchMessages: call('SearchMessages'),
   createDirectConversation: call('CreateDirectConversation'),
   createGroup: call('CreateGroup'),
   addMembers: call('AddMembers'),

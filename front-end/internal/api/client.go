@@ -149,6 +149,23 @@ func (c *Client) ListMessages(ctx context.Context, conversationID, before int64,
 	return messages, err
 }
 
+// SearchMessages busca, em uma conversa, as mensagens cujo texto contém term, da mais nova para a mais antiga
+// (GET /api/conversations/{id}/messages/search). before = 0 pede as mais recentes.
+func (c *Client) SearchMessages(ctx context.Context, conversationID int64, term string, before int64, limit int) ([]Message, error) {
+	query := url.Values{}
+	query.Set("q", term)
+	if before > 0 {
+		query.Set("before", strconv.FormatInt(before, 10))
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	path := fmt.Sprintf("/api/conversations/%d/messages/search?%s", conversationID, query.Encode())
+	var messages []Message
+	err := c.request(ctx, http.MethodGet, path, nil, &messages)
+	return messages, err
+}
+
 // request serializa body em JSON, envia a requisição com o token e decodifica a resposta em out (se não for nil).
 // Respostas de erro viram *APIError; falhas de rede viram ErrNetwork.
 func (c *Client) request(ctx context.Context, method, path string, body, out any) error {

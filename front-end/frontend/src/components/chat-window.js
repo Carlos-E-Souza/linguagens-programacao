@@ -5,6 +5,7 @@ import { conversationSubtitle, conversationTitle, messageKey, otherMember, sende
 import { createAvatar } from './avatar.js';
 import { createMessageBubble } from './message-bubble.js';
 import { createMessageInput } from './message-input.js';
+import { createMessageSearch } from './message-search.js';
 
 // Mensagens do mesmo remetente com menos de 5 minutos entre si formam um grupo visual.
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -21,7 +22,8 @@ const RENDER_STEP = 100;
  * Janela da conversa aberta: cabeçalho, histórico com separadores de dia e rolagem infinita para cima, e o campo
  * de escrita.
  * props: { conversation, me, page: { items, hasMore, loading, loaded, error }, onLoadOlder(), onRetry(),
- *          onSend(body), onRetryMessage(clientId), onShowDetails() }
+ *          onSend(body), onRetryMessage(clientId), onShowDetails(), onSearch(term, before) }
+ *          onSearch(term, before)
  */
 export function createChatWindow(props) {
   const avatar = createAvatar({ id: 0 });
@@ -38,11 +40,28 @@ export function createChatWindow(props) {
     },
     icon('info'),
   );
+  
+  const searchButton = h(
+    'button',
+    {
+      class: 'button button--icon chat-window__search',
+      type: 'button',
+      'aria-label': 'Buscar mensagens',
+      'aria-expanded': 'false',
+      title: 'Buscar nesta conversa',
+      on: { click: () => (search ? closeSearch() : openSearch()) },
+    },
+    icon('search'),
+  );
+  const searchPanel = h('div', { class: 'chat-window__search-panel', hidden: true });
+  let search = null;
+
   const header = h(
     'header',
     { class: 'chat-window__header' },
     avatar.el,
     h('div', { class: 'chat-window__heading' }, title, subtitle),
+    searchButton,
     detailsButton,
   );
 
@@ -60,7 +79,7 @@ export function createChatWindow(props) {
     conversationId: props.conversation.id,
     onSend: (body) => props.onSend(body),
   });
-  const el = h('section', { class: 'chat-window' }, header, scroller, input.el);
+  const el = h('section', { class: 'chat-window' }, header, searchPanel, scroller, input.el);
 
   let conversationId = null;
   let bubbles = new Map();
@@ -85,6 +104,30 @@ export function createChatWindow(props) {
       renderLimit = Math.max(renderLimit, page.items.length) + RENDER_STEP;
       props.onLoadOlder();
     }
+  }
+
+
+  function openSearch() {
+  search = createMessageSearch({
+    // props é lido na hora da chamada: sempre vale a conversa e o usuário atuais.
+    search: (term, before) => props.onSearch(term, before),
+    senderName: (senderId) => senderName(props.conversation, senderId, props.me),
+    onClose: closeSearch,
+  });
+  searchPanel.replaceChildren(search.el);
+  searchPanel.hidden = false;
+  searchButton.setAttribute('aria-expanded', 'true');
+  search.focus();
+  }
+
+  function closeSearch() {
+    if (!search) return;
+    search.destroy();
+    search = null;
+    searchPanel.replaceChildren();
+    searchPanel.hidden = true;
+    searchButton.setAttribute('aria-expanded', 'false');
+    searchButton.focus();
   }
 
   function renderHeader() {
@@ -193,6 +236,7 @@ export function createChatWindow(props) {
     const switched = props.conversation.id !== conversationId;
     if (switched) {
       conversationId = props.conversation.id;
+      closeSearch();
       bubbles = new Map();
       separators = new Map();
       rows.replaceChildren();
@@ -230,7 +274,14 @@ export function createChatWindow(props) {
   }
 
   update(props);
-  return { el, update, destroy: () => input.destroy() };
+  return {
+    el,
+    update,
+    destroy: () => {
+      closeSearch();
+      input.destroy();
+    },
+  };
 }
 
 function emptyState(iconName, titleText, text) {

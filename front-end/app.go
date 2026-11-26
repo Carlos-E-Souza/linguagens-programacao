@@ -32,6 +32,9 @@ const pageSize = 50
 // maxMessageChars é o tamanho máximo de uma mensagem, o mesmo limite do servidor (MESSAGE_LIMIT_CHARS).
 const maxMessageChars = 4000
 
+// searchPageSize é quantos resultados uma busca traz por vez (o servidor limita em 50).
+const searchPageSize = 20
+
 // App é a estrutura exposta para a interface pelo Wails. Seus métodos públicos viram funções em
 // wailsjs/go/main/App.js; os erros devolvidos chegam à interface como promessas rejeitadas com texto amigável.
 type App struct {
@@ -708,4 +711,22 @@ func nonNil[T any](items []T) []T {
 		return []T{}
 	}
 	return items
+}
+
+// SearchMessages busca mensagens de uma conversa no servidor, da mais nova para a mais antiga. before = 0 pede
+// os resultados mais recentes; para a página seguinte, passe a menor sequência já recebida. Só funciona com
+// conexão: o cache local guarda apenas parte do histórico.
+func (a *App) SearchMessages(conversationID int64, term string, before int64) ([]api.Message, error) {
+	s := a.current()
+	if s == nil {
+		return nil, errNoSession
+	}
+	messages, err := a.api.SearchMessages(s.ctx, conversationID, term, before, searchPageSize)
+	if err != nil {
+		return nil, friendly(err, map[int]string{
+			http.StatusBadRequest: "Digite de 2 a 100 caracteres para buscar.",
+			http.StatusNotFound:   "Esta conversa não existe mais.",
+		})
+	}
+	return nonNil(messages), nil
 }
