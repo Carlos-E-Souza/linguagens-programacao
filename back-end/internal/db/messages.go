@@ -149,14 +149,15 @@ func (s *Store) ListMessagesAfter(ctx context.Context, conversationID, afterSequ
 	return scanMessages(rows)
 }
 
-// SearchMessages returns up to limit messages of one conversation whose body
-// contains term, newest first, optionally older than beforeSequence.
+// SearchMessages retorna até limit mensagens de uma conversa cujo corpo
+// contém term, começando pelas mais recentes e, opcionalmente, anteriores a beforeSequence.
 //
-// Unlike ListMessages it does not reverse the page: a list of search
-// results reads best with the most recent hit on top, and the next page is
-// requested with before = the smallest sequence received. The term is bound
-// as a parameter and its LIKE wildcards are escaped, so it is always
-// literal text. SQLite's LIKE ignores case for ASCII only.
+// Ao contrário de ListMessages, ela não inverte a página: os resultados da
+// busca ficam mais claros com a ocorrência mais recente no topo, e a próxima
+// página é solicitada com before = a menor sequência recebida. term é passado
+// como parâmetro, e os curingas de LIKE são escapados, para que seja sempre
+// interpretado como texto literal. O LIKE do SQLite ignora maiúsculas e
+// minúsculas apenas para caracteres ASCII.
 func (s *Store) SearchMessages(ctx context.Context, conversationID int64, term string, beforeSequence int64, limit int) ([]models.Message, error) {
 	pattern := "%" + escapeLike(term) + "%"
 
