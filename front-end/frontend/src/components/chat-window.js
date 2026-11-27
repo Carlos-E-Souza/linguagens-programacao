@@ -58,7 +58,7 @@ export function createChatWindow(props) {
   );
   const input = createMessageInput({
     conversationId: props.conversation.id,
-    onSend: (body) => props.onSend(body),
+    onSend: props.onSend,
     onLoadDraft: (id) => props.onLoadDraft(id),
     onSaveDraft: (id, body) => props.onSaveDraft(id, body),
   });
@@ -201,7 +201,7 @@ export function createChatWindow(props) {
       firstKey = lastKey = null;
       renderLimit = RENDER_WINDOW;
     }
-    input.update({ conversationId: props.conversation.id });
+    input.update({ conversationId: props.conversation.id, onSend: props.onSend });
 
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < STICK_TO_BOTTOM;
     const prevHeight = scroller.scrollHeight;
