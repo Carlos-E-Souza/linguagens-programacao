@@ -18,7 +18,7 @@ live.go, sync.go         mensagens ao vivo, status, presença e sincronização 
 conversations.go         busca de pessoas, conversas individuais, grupos e membros
 internal/
   api/                   cliente REST e modelos (User, Conversation, Member, Message)
-  cache/                 SQLite local por usuário: sessão, conversas, membros, mensagens, fila
+  cache/                 SQLite local por usuário: sessão, conversas, membros, mensagens, fila e rascunhos
   events/                nomes e payloads dos eventos emitidos para a interface
   wsclient/              conexão WebSocket com heartbeat e reconexão (backoff exponencial com jitter)
   queue/                 fila de mensagens pendentes: envio em ordem, reenvio sem ACK e após reconexão
@@ -85,6 +85,8 @@ mesma máquina precisam de pastas diferentes (`XDG_CONFIG_HOME` no Linux, `APPDA
   segundo clique para confirmar.
 - **Mensagens:** Enter envia, Shift+Enter quebra a linha. Ícones: relógio (enviando), ✓ (enviada), ✓✓ (entregue),
   ✓✓ azul (lida). Sem conexão, as mensagens ficam pendentes e saem sozinhas quando a conexão volta.
+- **Rascunhos:** o texto ainda não enviado fica salvo por conversa no cache local da conta. Ao fechar e reabrir o app,
+  o texto volta ao campo; ao enviar, o rascunho é removido.
 
 ## Comandos
 
