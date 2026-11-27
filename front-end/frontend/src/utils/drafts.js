@@ -22,5 +22,7 @@ export function createDraftStore(loadFromDisk, saveToDisk) {
       lastWrite = lastWrite.catch(() => {}).then(() => saveToDisk(conversationId, body));
       return lastWrite;
     },
+
+    flush: () => lastWrite,
   };
 }

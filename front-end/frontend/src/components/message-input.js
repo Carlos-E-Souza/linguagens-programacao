@@ -135,5 +135,5 @@ export function createMessageInput(props) {
   }
 
   update(props);
-  return { el: form, update, destroy() { destroyed = true; } };
+  return { el: form, update, flush: () => drafts.flush(), destroy() { destroyed = true; } };
 }

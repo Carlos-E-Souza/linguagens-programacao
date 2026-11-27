@@ -232,7 +232,7 @@ export function createChatWindow(props) {
   }
 
   update(props);
-  return { el, update, destroy: () => input.destroy() };
+  return { el, update, flushDrafts: () => input.flush(), destroy: () => input.destroy() };
 }
 
 function emptyState(iconName, titleText, text) {

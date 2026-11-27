@@ -48,3 +48,30 @@ test('leitura antiga não substitui texto digitado enquanto ela estava pendente'
   assert.equal(await reading, 'texto novo');
   assert.equal(drafts.peek(2), 'texto novo');
 });
+
+test('espera a última gravação antes de encerrar a sessão', async () => {
+  let finishSave;
+  let saveStarted;
+  const started = new Promise((resolve) => { saveStarted = resolve; });
+  const drafts = createDraftStore(
+    async () => '',
+    async () => {
+      await new Promise((resolve) => {
+        finishSave = resolve;
+        saveStarted();
+      });
+    },
+  );
+
+  const saving = drafts.save(1, 'texto para depois');
+  const flushed = drafts.flush();
+  await started;
+  let completed = false;
+  flushed.then(() => { completed = true; });
+  await Promise.resolve();
+  assert.equal(completed, false);
+
+  finishSave();
+  await Promise.all([saving, flushed]);
+  assert.equal(completed, true);
+});
