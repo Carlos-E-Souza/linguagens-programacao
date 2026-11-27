@@ -2,11 +2,13 @@ import {
   addMembers,
   createGroup,
   leaveGroup,
+  loadDraft,
   loadOlderMessages,
   logout,
   openConversation,
   removeMember,
   retryMessage,
+  saveDraft,
   searchUsers,
   sendMessage,
   startDirectConversation,
@@ -28,13 +30,14 @@ import { icon } from '../utils/icons.js';
  */
 export function createChatScreen() {
   const state = store.get();
+  const userId = state.user.id;
 
   const meAvatar = createAvatar({ id: state.user.id, name: state.user.display_name, size: 'sm' });
   const meName = h('span', { class: 'sidebar__name' });
   const meUsername = h('span', { class: 'sidebar__username' });
   const logoutButton = h(
     'button',
-    { class: 'button button--icon', type: 'button', 'aria-label': 'Sair', title: 'Sair', on: { click: () => logout() } },
+    { class: 'button button--icon', type: 'button', 'aria-label': 'Sair', title: 'Sair', on: { click: handleLogout } },
     icon('logout'),
   );
 
@@ -101,6 +104,17 @@ export function createChatScreen() {
   let chatWindow = null;
   // Janela modal aberta: { kind: 'new-conversation' | 'group' | 'details', view, conversationId }.
   let modal = null;
+
+  async function handleLogout() {
+    logoutButton.disabled = true;
+    // O Go fecha o banco no logout; espera as gravações iniciadas pela interface.
+    if (chatWindow) await chatWindow.flushDrafts().catch(() => {});
+    try {
+      await logout();
+    } finally {
+      logoutButton.disabled = false;
+    }
+  }
 
   function showModal(kind) {
     closeModal();
@@ -205,6 +219,8 @@ export function createChatScreen() {
       onLoadOlder: () => loadOlderMessages(id),
       onRetry: () => (messagesOf(store.get(), id).loaded ? loadOlderMessages(id) : reopen(id)),
       onSend: (body) => sendMessage(id, body),
+      onLoadDraft: (conversationId) => loadDraft(userId, conversationId),
+      onSaveDraft: (conversationId, body) => saveDraft(userId, conversationId, body),
       onRetryMessage: (clientId) => retryMessage(clientId),
       onShowDetails: () => showModal('details'),
     };

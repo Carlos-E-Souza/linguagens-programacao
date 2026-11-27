@@ -49,6 +49,8 @@ export const bridge = {
   currentUser: call('CurrentUser'),
   listConversations: call('ListConversations'),
   loadMessages: call('LoadMessages'),
+  loadDraft: call('LoadDraft'),
+  saveDraft: call('SaveDraft'),
   sendMessage: call('SendMessage'),
   retryMessage: call('RetryMessage'),
   markAsRead: call('MarkAsRead'),

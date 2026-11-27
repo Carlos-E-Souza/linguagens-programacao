@@ -58,7 +58,9 @@ export function createChatWindow(props) {
   );
   const input = createMessageInput({
     conversationId: props.conversation.id,
-    onSend: (body) => props.onSend(body),
+    onSend: props.onSend,
+    onLoadDraft: (id) => props.onLoadDraft(id),
+    onSaveDraft: (id, body) => props.onSaveDraft(id, body),
   });
   const el = h('section', { class: 'chat-window' }, header, scroller, input.el);
 
@@ -199,7 +201,7 @@ export function createChatWindow(props) {
       firstKey = lastKey = null;
       renderLimit = RENDER_WINDOW;
     }
-    input.update({ conversationId: props.conversation.id });
+    input.update({ conversationId: props.conversation.id, onSend: props.onSend });
 
     const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < STICK_TO_BOTTOM;
     const prevHeight = scroller.scrollHeight;
@@ -230,7 +232,7 @@ export function createChatWindow(props) {
   }
 
   update(props);
-  return { el, update, destroy: () => input.destroy() };
+  return { el, update, flushDrafts: () => input.flush(), destroy: () => input.destroy() };
 }
 
 function emptyState(iconName, titleText, text) {

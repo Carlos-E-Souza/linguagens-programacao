@@ -83,6 +83,12 @@ CREATE TABLE IF NOT EXISTS sync_cursors (
   conversation_id INTEGER PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
   last_sequence   INTEGER NOT NULL DEFAULT 0
 );
+
+-- Texto ainda não enviado, mantido apenas no dispositivo deste usuário.
+CREATE TABLE IF NOT EXISTS drafts (
+  conversation_id INTEGER PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+  body            TEXT NOT NULL
+);
 `
 
 // statusRank ordena os status para que uma atualização nunca faça uma mensagem "voltar" (ex.: read → sent).

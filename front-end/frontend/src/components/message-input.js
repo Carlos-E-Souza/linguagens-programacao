@@ -1,5 +1,6 @@
 import { h, setText, toggleClass } from '../utils/dom.js';
 import { icon } from '../utils/icons.js';
+import { createDraftStore } from '../utils/drafts.js';
 
 // Mesmo limite do servidor (MESSAGE_LIMIT_CHARS) e da camada Go.
 export const MAX_MESSAGE_CHARS = 4000;
@@ -9,9 +10,8 @@ const COUNTER_FROM = MAX_MESSAGE_CHARS - 300;
 const MAX_HEIGHT_PX = 160;
 
 /**
- * Campo de escrita da conversa: Enter envia, Shift+Enter quebra a linha. Guarda um rascunho por conversa.
- * props: { conversationId, onSend(body) → Promise } — se onSend rejeitar com um Error, a mensagem dele é exibida e o
- * texto volta para o campo.
+ * Campo de escrita da conversa: Enter envia, Shift+Enter quebra a linha. Guarda um rascunho por conversa no cache.
+ * props: { conversationId, onSend(body), onLoadDraft(id), onSaveDraft(id, body) }.
  */
 export function createMessageInput(props) {
   const textarea = h('textarea', {
@@ -43,11 +43,21 @@ export function createMessageInput(props) {
     help,
   );
 
-  const drafts = new Map();
+  const drafts = createDraftStore(
+    (id) => props.onLoadDraft(id),
+    (id, body) => props.onSaveDraft(id, body),
+  );
   let conversationId = null;
+  let destroyed = false;
 
   textarea.addEventListener('input', () => {
-    drafts.set(conversationId, textarea.value);
+    const id = conversationId;
+    const body = textarea.value;
+    drafts.save(id, body).catch(() => {
+      if (!destroyed && conversationId === id && drafts.peek(id) === body) {
+        showError('Não foi possível salvar o rascunho neste dispositivo.');
+      }
+    });
     showError('');
     refresh();
   });
@@ -85,19 +95,21 @@ export function createMessageInput(props) {
     if (!body || [...body].length > MAX_MESSAGE_CHARS) return;
     // Limpa na hora: a mensagem aparece como pendente e a fila garante a entrega.
     const id = conversationId;
+    const send = props.onSend;
     textarea.value = '';
-    drafts.delete(id);
     refresh();
     textarea.focus();
     try {
-      await props.onSend(body);
+      // A gravação vazia vem depois das letras anteriores e antes do envio.
+      await drafts.save(id, '');
+      await send(body);
     } catch (err) {
-      // Não guardou: devolve o texto ao campo para não perder o que foi escrito.
+      // Se o envio falhar, guarda o texto de novo na conversa de origem.
+      if (drafts.peek(id) === '') drafts.save(id, body).catch(() => {});
       if (conversationId !== id) return;
       showError(err?.message || 'Não foi possível enviar a mensagem.');
       if (!textarea.value) {
         textarea.value = body;
-        drafts.set(id, body);
         refresh();
       }
     }
@@ -107,13 +119,21 @@ export function createMessageInput(props) {
     props = { ...props, ...next };
     if (props.conversationId !== conversationId) {
       conversationId = props.conversationId;
-      textarea.value = drafts.get(conversationId) ?? '';
+      const id = conversationId;
+      textarea.value = drafts.peek(id) ?? '';
       showError('');
       refresh();
-      queueMicrotask(() => textarea.focus());
+      drafts.load(id).then((body) => {
+        if (destroyed || conversationId !== id || drafts.peek(id) !== body) return;
+        textarea.value = body;
+        refresh();
+      }).catch(() => {
+        if (!destroyed && conversationId === id) showError('Não foi possível ler o rascunho salvo.');
+      });
+      queueMicrotask(() => { if (!destroyed && conversationId === id) textarea.focus(); });
     }
   }
 
   update(props);
-  return { el: form, update, destroy() {} };
+  return { el: form, update, flush: () => drafts.flush(), destroy() { destroyed = true; } };
 }
