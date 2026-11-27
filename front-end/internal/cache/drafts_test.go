@@ -15,10 +15,16 @@ func TestDraftPersistsAfterReopeningCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.SaveConversations(ctx, []api.Conversation{{ID: 1, Type: api.ConversationDirect}}); err != nil {
+	if err := c.SaveConversations(ctx, []api.Conversation{
+		{ID: 1, Type: api.ConversationDirect},
+		{ID: 2, Type: api.ConversationDirect},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.SaveDraft(ctx, 1, "Olá, Bruno!\nAté amanhã."); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SaveDraft(ctx, 2, "Outro assunto"); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.Close(); err != nil {
@@ -33,5 +39,14 @@ func TestDraftPersistsAfterReopeningCache(t *testing.T) {
 	got, err := c.LoadDraft(ctx, 1)
 	if err != nil || got != "Olá, Bruno!\nAté amanhã." {
 		t.Fatalf("rascunho após reabrir = %q, erro = %v", got, err)
+	}
+	if err := c.SaveDraft(ctx, 1, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.LoadDraft(ctx, 1); err != nil || got != "" {
+		t.Fatalf("rascunho apagado = %q, erro = %v", got, err)
+	}
+	if got, err := c.LoadDraft(ctx, 2); err != nil || got != "Outro assunto" {
+		t.Fatalf("rascunho da outra conversa = %q, erro = %v", got, err)
 	}
 }
