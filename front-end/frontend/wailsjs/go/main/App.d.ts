@@ -14,6 +14,8 @@ export function CurrentUser():Promise<api.User>;
 
 export function ListConversations():Promise<Array<api.Conversation>>;
 
+export function LoadDraft(arg1:number,arg2:number):Promise<string>;
+
 export function LoadMessages(arg1:number,arg2:number):Promise<Array<api.Message>>;
 
 export function Login(arg1:string,arg2:string):Promise<api.User>;
@@ -29,6 +31,8 @@ export function RemoveMember(arg1:number,arg2:number):Promise<void>;
 export function RestoreSession():Promise<api.User>;
 
 export function RetryMessage(arg1:string):Promise<api.Message>;
+
+export function SaveDraft(arg1:number,arg2:number,arg3:string):Promise<void>;
 
 export function SearchUsers(arg1:string):Promise<Array<api.User>>;
 

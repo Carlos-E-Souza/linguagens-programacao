@@ -26,6 +26,10 @@ export function ListConversations() {
   return window['go']['main']['App']['ListConversations']();
 }
 
+export function LoadDraft(arg1, arg2) {
+  return window['go']['main']['App']['LoadDraft'](arg1, arg2);
+}
+
 export function LoadMessages(arg1, arg2) {
   return window['go']['main']['App']['LoadMessages'](arg1, arg2);
 }
@@ -56,6 +60,10 @@ export function RestoreSession() {
 
 export function RetryMessage(arg1) {
   return window['go']['main']['App']['RetryMessage'](arg1);
+}
+
+export function SaveDraft(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveDraft'](arg1, arg2, arg3);
 }
 
 export function SearchUsers(arg1) {
