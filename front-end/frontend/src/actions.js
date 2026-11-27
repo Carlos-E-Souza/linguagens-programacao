@@ -132,6 +132,10 @@ export async function openConversation(id) {
   markActiveAsRead();
 }
 
+/** Lê e salva rascunhos no cache local da conta que abriu esta tela. */
+export const loadDraft = (userId, conversationId) => bridge.loadDraft(userId, conversationId);
+export const saveDraft = (userId, conversationId, body) => bridge.saveDraft(userId, conversationId, body);
+
 /** Carrega a página anterior à mensagem mais antiga exibida (rolagem infinita para cima). */
 export async function loadOlderMessages(id) {
   const page = messagesOf(store.get(), id);

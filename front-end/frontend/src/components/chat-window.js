@@ -59,6 +59,8 @@ export function createChatWindow(props) {
   const input = createMessageInput({
     conversationId: props.conversation.id,
     onSend: (body) => props.onSend(body),
+    onLoadDraft: (id) => props.onLoadDraft(id),
+    onSaveDraft: (id, body) => props.onSaveDraft(id, body),
   });
   const el = h('section', { class: 'chat-window' }, header, scroller, input.el);
 

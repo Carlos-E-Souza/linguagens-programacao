@@ -2,11 +2,13 @@ import {
   addMembers,
   createGroup,
   leaveGroup,
+  loadDraft,
   loadOlderMessages,
   logout,
   openConversation,
   removeMember,
   retryMessage,
+  saveDraft,
   searchUsers,
   sendMessage,
   startDirectConversation,
@@ -28,6 +30,7 @@ import { icon } from '../utils/icons.js';
  */
 export function createChatScreen() {
   const state = store.get();
+  const userId = state.user.id;
 
   const meAvatar = createAvatar({ id: state.user.id, name: state.user.display_name, size: 'sm' });
   const meName = h('span', { class: 'sidebar__name' });
@@ -205,6 +208,8 @@ export function createChatScreen() {
       onLoadOlder: () => loadOlderMessages(id),
       onRetry: () => (messagesOf(store.get(), id).loaded ? loadOlderMessages(id) : reopen(id)),
       onSend: (body) => sendMessage(id, body),
+      onLoadDraft: (conversationId) => loadDraft(userId, conversationId),
+      onSaveDraft: (conversationId, body) => saveDraft(userId, conversationId, body),
       onRetryMessage: (clientId) => retryMessage(clientId),
       onShowDetails: () => showModal('details'),
     };

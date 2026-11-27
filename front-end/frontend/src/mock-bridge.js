@@ -96,6 +96,7 @@ function addConversation({ type, name, members }) {
 
 export function createMockBridge() {
   const listeners = new Map();
+  const drafts = new Map();
   let loggedIn = false;
   let state = 'disconnected';
 
@@ -252,6 +253,13 @@ export function createMockBridge() {
       const all = histories[conversationId] ?? [];
       const upper = before || Infinity;
       return structuredClone(all.filter((m) => m.sequence < upper).slice(-50));
+    },
+    async LoadDraft(_userId, conversationId) {
+      return drafts.get(conversationId) ?? '';
+    },
+    async SaveDraft(_userId, conversationId, body) {
+      if (body) drafts.set(conversationId, body);
+      else drafts.delete(conversationId);
     },
     async SendMessage(conversationId, body) {
       const text = body.trim();
